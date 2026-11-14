@@ -1,0 +1,6 @@
+{
+  "name": "Basketball Court Studio",
+  "description": "Architectural CAD and 3D construction planning platform for indoor and outdoor basketball courts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

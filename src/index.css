@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bcs-bg-graphite: #111318;
+    --bcs-bg-panel: #1A2029;
+    --bcs-bg-elevated: #202630;
+    --bcs-accent-orange: #F07827;
+    --bcs-accent-blue: #1686C9;
+    --bcs-text-main: #F2F4F7;
+    --bcs-text-muted: #9AA4B2;
+    --bcs-border-subtle: rgba(242, 244, 247, 0.08);
+    --bcs-border-strong: rgba(242, 244, 247, 0.16);
+  }
+
+  html,
+  body {
+    background-color: #111318;
+    color: #F2F4F7;
+    font-family: "DM Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  .font-display {
+    font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  .font-mono-tech {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid #F07827;
+    outline-offset: 2px;
+  }
+}
+
+/* Custom thin architectural scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #111318;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2A3240;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3A4558;
+}
