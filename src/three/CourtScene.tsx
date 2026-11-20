@@ -25,13 +25,20 @@ import {
   ToolMode,
 } from '../types/court';
 import {
-  createBoundaryLinesGeometry,
-  createCentreFillGeometry,
-  createCentreLinesGeometry,
-  createFreeThrowGeometries,
-  createThreePointLinesGeometry,
-} from './courtGeometry';
+  compileLayerToThreeGeometry,
+  resolveEffectiveSportLayers,
+} from '../sports/markingPrimitives';
 import { createSurfaceTexture } from './courtTextures';
+import {
+  CornerFlagMesh,
+  DugoutShelterMesh,
+  FootballGoalMesh,
+  HandballGoalMesh,
+  MultisportComboGoalMesh,
+  SelectionRing,
+  TennisNetMesh,
+  VolleyballNetMesh,
+} from './sportEquipmentMeshes';
 
 // Reusable scratch vectors to eliminate per-frame GC allocations
 const _desiredPos = new THREE.Vector3();
@@ -119,22 +126,23 @@ const CameraRig: React.FC<CameraRigProps> = ({
     }
     initializedRef.current = true;
 
-    const span = Math.max(courtLength, courtWidth);
+    const diag = Math.hypot(courtLength, courtWidth);
+    const span = Math.max(courtLength, courtWidth, diag * 0.86);
     if (preset === 'top') {
       _desiredPos.set(0, span * 1.25, 0.01);
       _desiredTarget.set(0, 0, 0);
     } else if (preset === 'front') {
-      _desiredPos.set(-(courtLength / 2 + 12.5), 3.6, 0);
+      _desiredPos.set(-(courtLength / 2 + Math.max(12, courtWidth * 0.55)), Math.max(3.6, courtWidth * 0.16), 0);
       _desiredTarget.set(0, 1.5, 0);
     } else if (preset === 'side') {
-      _desiredPos.set(0, 4.4, courtWidth / 2 + 16.5);
+      _desiredPos.set(0, Math.max(4.4, span * 0.14), courtWidth / 2 + Math.max(16, courtLength * 0.45));
       _desiredTarget.set(0, 1.4, 0);
     } else {
-      _desiredPos.set(span * 0.68, span * 0.46, span * 0.74);
+      _desiredPos.set(span * 0.66, span * 0.44, span * 0.72);
       _desiredTarget.set(0, 0.6, 0);
     }
 
-    const fitZoom = Math.max(12, Math.min(size.width, size.height) / (span * 1.15));
+    const fitZoom = Math.max(2.5, Math.min(size.width, size.height) / (span * 1.15));
     desiredZoom.current = fitZoom;
     transitionActive.current = true;
     invalidate();
@@ -149,7 +157,7 @@ const CameraRig: React.FC<CameraRigProps> = ({
     }
     if (projection === 'orthographic' && orthoRef.current) {
       const span = Math.max(courtLength, courtWidth);
-      orthoRef.current.zoom = Math.max(14, Math.min(size.width, size.height) / (span * 1.2));
+      orthoRef.current.zoom = Math.max(2.5, Math.min(size.width, size.height) / (span * 1.2));
       orthoRef.current.updateProjectionMatrix();
     }
     controlsRef.current?.update();
@@ -210,6 +218,10 @@ const CameraRig: React.FC<CameraRigProps> = ({
     });
   };
 
+  const diag = Math.hypot(courtLength, courtWidth);
+  const camFar = Math.max(360, diag * 4);
+  const maxDist = Math.max(120, diag * 2.2);
+
   return (
     <>
       <PerspectiveCamera
@@ -217,14 +229,14 @@ const CameraRig: React.FC<CameraRigProps> = ({
         makeDefault={projection === 'perspective'}
         fov={44}
         near={0.2}
-        far={280}
+        far={camFar}
         position={initialCamera?.position ?? [19, 13, 21]}
       />
       <OrthographicCamera
         ref={orthoRef}
         makeDefault={projection === 'orthographic'}
-        near={-120}
-        far={280}
+        near={-Math.max(160, diag * 1.5)}
+        far={camFar}
         zoom={initialCamera?.zoom ?? 24}
         position={initialCamera?.position ?? [19, 13, 21]}
       />
@@ -242,9 +254,9 @@ const CameraRig: React.FC<CameraRigProps> = ({
         minPolarAngle={0.02}
         maxPolarAngle={Math.PI / 2 - 0.02}
         minDistance={3}
-        maxDistance={105}
-        minZoom={6}
-        maxZoom={140}
+        maxDistance={maxDist}
+        minZoom={2}
+        maxZoom={160}
         touches={{
           ONE: THREE.TOUCH.ROTATE,
           TWO: THREE.TOUCH.DOLLY_PAN,
@@ -256,19 +268,6 @@ const CameraRig: React.FC<CameraRigProps> = ({
         onEnd={handleOrbitEnd}
       />
     </>
-  );
-};
-
-const SelectionRing: React.FC<{ selected: boolean; radius?: number }> = ({
-  selected,
-  radius = 1.2,
-}) => {
-  if (!selected) return null;
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]}>
-      <ringGeometry args={[radius, radius + 0.09, 48]} />
-      <meshBasicMaterial color="#F07827" side={THREE.DoubleSide} />
-    </mesh>
   );
 };
 
@@ -643,113 +642,131 @@ const LightingMastMesh: React.FC<{
   isSelected: boolean;
   isNight: boolean;
   archMode: boolean;
-}> = React.memo(({ obj, isSelected, isNight, archMode }) => (
+  techMode?: boolean;
+}> = React.memo(({ obj, isSelected, isNight, archMode, techMode = false }) => {
+  const poleH = Math.max(4, Math.min(24, obj.metadata?.poleHeightM ?? 6.5));
+  return (
+    <group>
+      <mesh position={[0, 0.25, 0]} castShadow receiveShadow>
+        <cylinderGeometry args={[0.24, 0.28, 0.5, 16]} />
+        <meshStandardMaterial color={techMode ? '#1E3A66' : '#4A5464'} roughness={0.88} metalness={0.05} />
+      </mesh>
+      <mesh position={[0, poleH / 2 + 0.25, 0]} castShadow>
+        <cylinderGeometry args={[0.07, 0.14, poleH - 0.3, 16]} />
+        <meshStandardMaterial
+          color={techMode ? '#38BDF8' : archMode ? '#B4BECA' : obj.color}
+          roughness={0.36}
+          metalness={0.85}
+        />
+      </mesh>
+      <mesh position={[0, poleH + 0.05, 0]} castShadow>
+        <boxGeometry args={[1.35, 0.1, 0.12]} />
+        <meshStandardMaterial
+          color={techMode ? '#38BDF8' : archMode ? '#B4BECA' : obj.color}
+          roughness={0.36}
+          metalness={0.85}
+        />
+      </mesh>
+      {[-0.45, 0.45].map((x, idx) => (
+        <group key={idx} position={[x, poleH + 0.18, 0.14]} rotation={[0.42, 0, 0]}>
+          <mesh castShadow>
+            <boxGeometry args={[0.42, 0.28, 0.12]} />
+            <meshStandardMaterial color="#181C23" roughness={0.45} metalness={0.75} />
+          </mesh>
+          <mesh position={[0, 0, 0.065]}>
+            <planeGeometry args={[0.35, 0.22]} />
+            <meshStandardMaterial
+              color="#FFFFFF"
+              emissive="#FFF3D6"
+              emissiveIntensity={isNight ? 3.2 : 1.1}
+              roughness={0.2}
+            />
+          </mesh>
+        </group>
+      ))}
+      {isNight && (
+        <pointLight
+          position={[0, poleH - 0.3, 0.8]}
+          intensity={poleH >= 10 ? 75 : 28}
+          distance={poleH >= 10 ? 58 : 28}
+          decay={1.5}
+          color="#FFF3DC"
+        />
+      )}
+      <SelectionRing selected={isSelected} radius={0.75} />
+    </group>
+  );
+});
+
+const ScoreboardMesh: React.FC<{
+  obj: SceneObject;
+  isSelected: boolean;
+  archMode: boolean;
+  techMode?: boolean;
+}> = React.memo(({ obj, isSelected, archMode, techMode = false }) => (
   <group>
-    <mesh position={[0, 0.25, 0]} castShadow receiveShadow>
-      <cylinderGeometry args={[0.24, 0.28, 0.5, 16]} />
-      <meshStandardMaterial color="#4A5464" roughness={0.88} metalness={0.05} />
-    </mesh>
-    <mesh position={[0, 3.5, 0]} castShadow>
-      <cylinderGeometry args={[0.07, 0.13, 6.2, 16]} />
+    <mesh castShadow>
+      <boxGeometry args={[4.2, 1.5, 0.26]} />
       <meshStandardMaterial
-        color={archMode ? '#B4BECA' : obj.color}
-        roughness={0.36}
-        metalness={0.85}
+        color={techMode ? '#38BDF8' : archMode ? '#AEB7C5' : obj.color}
+        roughness={0.42}
+        metalness={0.72}
       />
     </mesh>
-    <mesh position={[0, 6.5, 0]} castShadow>
-      <boxGeometry args={[1.25, 0.1, 0.12]} />
+    <mesh position={[0, 0, 0.135]}>
+      <planeGeometry args={[3.9, 1.25]} />
+      <meshStandardMaterial color={techMode ? '#0F1C32' : '#0C0F14'} roughness={0.3} metalness={0.2} />
+    </mesh>
+    <mesh position={[-1.1, 0.1, 0.145]}>
+      <planeGeometry args={[0.9, 0.55]} />
+      <meshStandardMaterial color="#1686C9" emissive="#1686C9" emissiveIntensity={0.85} />
+    </mesh>
+    <mesh position={[1.1, 0.1, 0.145]}>
+      <planeGeometry args={[0.9, 0.55]} />
       <meshStandardMaterial
-        color={archMode ? '#B4BECA' : obj.color}
-        roughness={0.36}
-        metalness={0.85}
+        color={obj.secondaryColor || '#F07827'}
+        emissive={obj.secondaryColor || '#F07827'}
+        emissiveIntensity={0.85}
       />
     </mesh>
-    {[-0.42, 0.42].map((x, idx) => (
-      <group key={idx} position={[x, 6.62, 0.14]} rotation={[0.42, 0, 0]}>
-        <mesh castShadow>
-          <boxGeometry args={[0.38, 0.26, 0.12]} />
-          <meshStandardMaterial color="#181C23" roughness={0.45} metalness={0.75} />
-        </mesh>
-        <mesh position={[0, 0, 0.065]}>
-          <planeGeometry args={[0.32, 0.2]} />
-          <meshStandardMaterial
-            color="#FFFFFF"
-            emissive="#FFF3D6"
-            emissiveIntensity={isNight ? 3.2 : 1.1}
-            roughness={0.2}
-          />
-        </mesh>
-      </group>
-    ))}
-    {isNight && (
-      <pointLight position={[0, 6.2, 0.8]} intensity={28} distance={28} decay={1.6} color="#FFF3DC" />
+    {isSelected && (
+      <mesh>
+        <boxGeometry args={[4.35, 1.65, 0.35]} />
+        <meshBasicMaterial color="#F07827" wireframe />
+      </mesh>
     )}
-    <SelectionRing selected={isSelected} radius={0.75} />
   </group>
 ));
-
-const ScoreboardMesh: React.FC<{ obj: SceneObject; isSelected: boolean; archMode: boolean }> =
-  React.memo(({ obj, isSelected, archMode }) => (
-    <group>
-      <mesh castShadow>
-        <boxGeometry args={[4.2, 1.5, 0.26]} />
-        <meshStandardMaterial
-          color={archMode ? '#AEB7C5' : obj.color}
-          roughness={0.42}
-          metalness={0.72}
-        />
-      </mesh>
-      <mesh position={[0, 0, 0.135]}>
-        <planeGeometry args={[3.9, 1.25]} />
-        <meshStandardMaterial color="#0C0F14" roughness={0.3} metalness={0.2} />
-      </mesh>
-      <mesh position={[-1.1, 0.1, 0.145]}>
-        <planeGeometry args={[0.9, 0.55]} />
-        <meshStandardMaterial color="#1686C9" emissive="#1686C9" emissiveIntensity={0.85} />
-      </mesh>
-      <mesh position={[1.1, 0.1, 0.145]}>
-        <planeGeometry args={[0.9, 0.55]} />
-        <meshStandardMaterial
-          color={obj.secondaryColor || '#F07827'}
-          emissive={obj.secondaryColor || '#F07827'}
-          emissiveIntensity={0.85}
-        />
-      </mesh>
-      {isSelected && (
-        <mesh>
-          <boxGeometry args={[4.35, 1.65, 0.35]} />
-          <meshBasicMaterial color="#F07827" wireframe />
-        </mesh>
-      )}
-    </group>
-  ));
 
 const PerimeterFenceMesh: React.FC<{
   obj: SceneObject;
   defaultSpan: number;
   isSelected: boolean;
-}> = React.memo(({ obj, defaultSpan, isSelected }) => {
+  archMode?: boolean;
+  techMode?: boolean;
+}> = React.memo(({ obj, defaultSpan, isSelected, archMode = false, techMode = false }) => {
   const span = Math.max(4, obj.metadata?.fenceLengthM ?? defaultSpan);
+  const height = Math.max(1.2, Math.min(8, obj.metadata?.fenceHeightM ?? 3.2));
   const posts = Math.max(3, Math.round(span / 3) + 1);
   const step = span / (posts - 1);
+  const postColor = techMode ? '#38BDF8' : archMode ? '#9BA5B4' : obj.color;
 
   return (
     <group>
       {Array.from({ length: posts }).map((_, i) => (
-        <mesh key={i} position={[-span / 2 + i * step, 1.5, 0]} castShadow>
-          <cylinderGeometry args={[0.045, 0.045, 3.0, 10]} />
-          <meshStandardMaterial color={obj.color} roughness={0.4} metalness={0.8} />
+        <mesh key={i} position={[-span / 2 + i * step, height / 2, 0]} castShadow>
+          <cylinderGeometry args={[0.045, 0.045, height, 10]} />
+          <meshStandardMaterial color={postColor} roughness={0.4} metalness={0.8} />
         </mesh>
       ))}
-      <mesh position={[0, 2.98, 0]}>
+      <mesh position={[0, height - 0.03, 0]}>
         <boxGeometry args={[span, 0.06, 0.06]} />
-        <meshStandardMaterial color={obj.color} roughness={0.4} metalness={0.8} />
+        <meshStandardMaterial color={postColor} roughness={0.4} metalness={0.8} />
       </mesh>
-      <mesh position={[0, 1.5, 0]}>
-        <planeGeometry args={[span, 2.9]} />
+      <mesh position={[0, height / 2, 0]}>
+        <planeGeometry args={[span, height - 0.1]} />
         <meshStandardMaterial
-          color="#5A6678"
+          color={techMode ? '#38BDF8' : '#5A6678'}
           wireframe
           transparent
           opacity={0.45}
@@ -1013,18 +1030,24 @@ const CourtContent: React.FC<CourtContentProps> = ({
   const { gl, invalidate } = useThree();
   const maxAnisotropy = useMemo(() => gl.capabilities.getMaxAnisotropy(), [gl]);
   const [isTransforming, setIsTransforming] = useState(false);
+  const [measurePts, setMeasurePts] = useState<Array<[number, number, number]>>([]);
+
+  useEffect(() => {
+    if (toolMode !== 'measure') {
+      setMeasurePts([]);
+    }
+  }, [toolMode]);
 
   useEffect(() => {
     invalidate();
-  }, [project, selectedObjectId, toolMode, showGrid, showDimensions, invalidate]);
+  }, [project, selectedObjectId, toolMode, showGrid, showDimensions, measurePts, invalidate]);
 
-  const spec = COURT_STANDARDS[project.standard];
-  const { lengthM, widthM, apronM, isHalfCourt, orientationDeg, showSafetyZone } =
-    project.dimensions;
+  const { lengthM, widthM, apronM, orientationDeg, showSafetyZone } = project.dimensions;
   const totalL = lengthM + apronM * 2;
   const totalW = widthM + apronM * 2;
   const playingAreaSqM = lengthM * widthM;
   const orientationRad = ((orientationDeg ?? 0) * Math.PI) / 180;
+  const span = Math.max(totalL, totalW);
 
   const envSettings = project.environmentSettings;
   const renderMode = envSettings.renderMode;
@@ -1048,58 +1071,20 @@ const CourtContent: React.FC<CourtContentProps> = ({
 
   useEffect(() => () => surfaceTexture.dispose(), [surfaceTexture]);
 
-  const boundaryGeo = useMemo(
-    () => createBoundaryLinesGeometry(lengthM, widthM, spec.lineWidthM),
-    [lengthM, widthM, spec.lineWidthM]
-  );
-  const centreLinesGeo = useMemo(
-    () => createCentreLinesGeometry(widthM, spec.centerCircleRadiusM, spec.lineWidthM),
-    [widthM, spec.centerCircleRadiusM, spec.lineWidthM]
-  );
-  const centreFillGeo = useMemo(
-    () => createCentreFillGeometry(spec.centerCircleRadiusM, spec.lineWidthM),
-    [spec.centerCircleRadiusM, spec.lineWidthM]
-  );
-  const freeThrowGeos = useMemo(
-    () =>
-      createFreeThrowGeometries({
-        lengthM,
-        widthM,
-        keyLengthM: spec.keyLengthM,
-        keyWidthM: spec.keyWidthM,
-        freeThrowRadiusM: spec.freeThrowRadiusM,
-        restrictedRadiusM: 1.25,
-        basketOffsetM: spec.basketCenterFromBaselineM,
-        backboardOffsetM: spec.backboardFromBaselineM,
-        lineWidthM: spec.lineWidthM,
-        isHalfCourt,
-      }),
-    [lengthM, widthM, spec, isHalfCourt]
-  );
-  const threePointGeo = useMemo(
-    () =>
-      createThreePointLinesGeometry({
-        lengthM,
-        widthM,
-        threePointRadiusM: spec.threePointRadiusM,
-        cornerInsetM: spec.threePointCornerInsetM,
-        basketOffsetM: spec.basketCenterFromBaselineM,
-        lineWidthM: spec.lineWidthM,
-        isHalfCourt,
-      }),
-    [lengthM, widthM, spec, isHalfCourt]
+  const effectiveLayers = useMemo(() => resolveEffectiveSportLayers(project), [project]);
+  const compiledLayers = useMemo(
+    () => effectiveLayers.filter((l) => l.visible).map((l) => compileLayerToThreeGeometry(l)),
+    [effectiveLayers]
   );
 
-  useEffect(() => () => boundaryGeo.dispose(), [boundaryGeo]);
-  useEffect(() => () => centreLinesGeo.dispose(), [centreLinesGeo]);
-  useEffect(() => () => centreFillGeo.dispose(), [centreFillGeo]);
   useEffect(() => {
     return () => {
-      freeThrowGeos.paintGeometry.dispose();
-      freeThrowGeos.linesGeometry.dispose();
+      compiledLayers.forEach((c) => {
+        c.paintGeometry.dispose();
+        c.linesGeometry.dispose();
+      });
     };
-  }, [freeThrowGeos]);
-  useEffect(() => () => threePointGeo.dispose(), [threePointGeo]);
+  }, [compiledLayers]);
 
   const slabObj = project.objects.find((o) => o.type === 'court_slab');
   const surfaceObj = project.objects.find((o) => o.type === 'playing_surface');
@@ -1119,10 +1104,10 @@ const CourtContent: React.FC<CourtContentProps> = ({
       o.type !== 'court_markings'
   );
 
-  const isWood =
-    !archMode &&
-    (project.materials.surfaceType === 'hardwood_maple' ||
-      project.materials.surfaceType === 'hardwood_dark');
+  const st = project.materials.surfaceType;
+  const isWood = !archMode && (st === 'hardwood_maple' || st === 'hardwood_dark');
+  const isNaturalOrSand = st === 'synthetic_turf' || st === 'natural_grass' || st === 'clay_red' || st === 'beach_sand';
+  const surfaceRoughness = isWood ? 0.3 : st === 'pu_multisport' ? 0.54 : isNaturalOrSand ? 0.92 : 0.72;
 
   const isSelectedCourtFloor =
     selectedObjectId &&
@@ -1135,35 +1120,73 @@ const CourtContent: React.FC<CourtContentProps> = ({
       threePtObj?.id,
     ].includes(selectedObjectId);
 
+  const handleMeasureTap = (pt: THREE.Vector3) => {
+    const next: [number, number, number] = [
+      Number(pt.x.toFixed(2)),
+      0.06,
+      Number(pt.z.toFixed(2)),
+    ];
+    setMeasurePts((prev) => (prev.length >= 2 ? [next] : [...prev, next]));
+  };
+
+  const shadowFrustum = Math.max(25, span * 0.68);
+  const groundSize = Math.max(260, totalL * 3);
+  const gridSize = Math.max(110, Math.ceil(span * 1.6));
+
+  // Measure distance computation
+  const measureDistanceM =
+    measurePts.length === 2
+      ? Math.hypot(measurePts[1][0] - measurePts[0][0], measurePts[1][2] - measurePts[0][2])
+      : 0;
+  const measureMid: [number, number, number] | null =
+    measurePts.length === 2
+      ? [
+          (measurePts[0][0] + measurePts[1][0]) / 2,
+          0.35,
+          (measurePts[0][2] + measurePts[1][2]) / 2,
+        ]
+      : null;
+
   return (
     <>
       <color attach="background" args={[rig.bg]} />
-      <fog attach="fog" args={[rig.bg, 45, 130]} />
+      <fog attach="fog" args={[rig.bg, Math.max(55, span * 1.4), Math.max(160, span * 3.8)]} />
       <StudioEnvironment />
 
       <hemisphereLight args={[rig.hemiSky, rig.hemiGround, rig.hemiIntensity]} />
       <directionalLight
-        position={rig.sunPos}
+        position={[rig.sunPos[0] * Math.max(1, span / 32), rig.sunPos[1] * Math.max(1, span / 40), rig.sunPos[2] * Math.max(1, span / 32)]}
         intensity={rig.sunIntensity}
         color={rig.sunColor}
         castShadow={shadowsOn}
         shadow-mapSize={[2048, 2048]}
-        shadow-camera-left={-25}
-        shadow-camera-right={25}
-        shadow-camera-top={25}
-        shadow-camera-bottom={-25}
+        shadow-camera-left={-shadowFrustum}
+        shadow-camera-right={shadowFrustum}
+        shadow-camera-top={shadowFrustum}
+        shadow-camera-bottom={-shadowFrustum}
         shadow-camera-near={2}
-        shadow-camera-far={85}
+        shadow-camera-far={Math.max(95, span * 2.5)}
         shadow-bias={-0.0005}
         shadow-normalBias={0.02}
       />
       <directionalLight position={[-18, 14, -14]} intensity={0.44} color="#9CC4F2" />
 
-      {/* Night arena overhead fill pools */}
       {isNight && (
         <>
-          <pointLight position={[-8, 9, 0]} intensity={52} distance={34} decay={1.5} color="#FFF4E0" />
-          <pointLight position={[8, 9, 0]} intensity={52} distance={34} decay={1.5} color="#FFF4E0" />
+          <pointLight
+            position={[-lengthM * 0.28, Math.max(9, span * 0.18), 0]}
+            intensity={span > 55 ? 120 : 52}
+            distance={Math.max(36, span * 0.9)}
+            decay={1.5}
+            color="#FFF4E0"
+          />
+          <pointLight
+            position={[lengthM * 0.28, Math.max(9, span * 0.18), 0]}
+            intensity={span > 55 ? 120 : 52}
+            distance={Math.max(36, span * 0.9)}
+            decay={1.5}
+            color="#FFF4E0"
+          />
         </>
       )}
 
@@ -1174,10 +1197,14 @@ const CourtContent: React.FC<CourtContentProps> = ({
         receiveShadow={shadowsOn}
         onClick={(e) => {
           e.stopPropagation();
-          onSelectObject(null);
+          if (toolMode === 'measure') {
+            handleMeasureTap(e.point);
+          } else {
+            onSelectObject(null);
+          }
         }}
       >
-        <planeGeometry args={[220, 220]} />
+        <planeGeometry args={[groundSize, groundSize]} />
         <meshStandardMaterial
           color={
             techMode
@@ -1196,20 +1223,49 @@ const CourtContent: React.FC<CourtContentProps> = ({
       {(showGrid || techMode) && (
         <Grid
           position={[0, -0.195, 0]}
-          args={[110, 110]}
-          cellSize={1}
+          args={[gridSize, gridSize]}
+          cellSize={span > 55 ? 2 : 1}
           cellThickness={0.55}
           cellColor={techMode ? '#18355E' : '#252D3A'}
-          sectionSize={5}
+          sectionSize={span > 55 ? 10 : 5}
           sectionThickness={1}
           sectionColor={techMode ? '#295794' : '#334054'}
-          fadeDistance={70}
+          fadeDistance={Math.max(70, span * 1.6)}
           fadeStrength={1.2}
         />
       )}
 
+      {/* Interactive 3D Measure Overlay */}
+      {toolMode === 'measure' && measurePts.length > 0 && (
+        <group>
+          {measurePts.map((pt, idx) => (
+            <mesh key={idx} position={pt}>
+              <sphereGeometry args={[Math.max(0.18, span * 0.005), 14, 14]} />
+              <meshBasicMaterial color="#F07827" />
+            </mesh>
+          ))}
+          {measurePts.length === 2 && (
+            <>
+              <Line points={[measurePts[0], measurePts[1]]} color="#F07827" lineWidth={2.5} />
+              {measureMid && (
+                <Text
+                  position={measureMid}
+                  rotation={[-Math.PI / 2, 0, 0]}
+                  fontSize={Math.max(0.55, span * 0.018)}
+                  color="#F07827"
+                  anchorX="center"
+                  anchorY="middle"
+                >
+                  {formatLength(measureDistanceM, project.unit, 2)}
+                </Text>
+              )}
+            </>
+          )}
+        </group>
+      )}
+
       {/* World North Orientation Marker */}
-      <group position={[0, -0.16, -(totalW / 2 + 3.2)]}>
+      <group position={[0, -0.16, -(totalW / 2 + Math.max(3.2, span * 0.06))]}>
         <Line
           points={[
             [0, 0, 0.7],
@@ -1224,14 +1280,14 @@ const CourtContent: React.FC<CourtContentProps> = ({
         <Text
           position={[0.55, 0.02, -0.45]}
           rotation={[-Math.PI / 2, 0, 0]}
-          fontSize={0.5}
+          fontSize={Math.max(0.5, span * 0.015)}
           color="#9AA4B2"
         >
           N
         </Text>
       </group>
 
-      {/* Rotatable Court + Surroundings Orientation Group */}
+      {/* Rotatable Facility + Surroundings Orientation Group */}
       <group rotation={[0, orientationRad, 0]}>
         <SurroundingsGroup
           preset={envSettings.surroundings}
@@ -1240,7 +1296,7 @@ const CourtContent: React.FC<CourtContentProps> = ({
           archMode={archMode}
         />
 
-        {/* 1. Court Slab (Safety Clearance Footprint) */}
+        {/* 1. Court Slab / Run-off Apron Footprint */}
         {slabObj && slabObj.visible && (
           <group>
             <mesh
@@ -1249,7 +1305,8 @@ const CourtContent: React.FC<CourtContentProps> = ({
               castShadow={shadowsOn}
               onClick={(e) => {
                 e.stopPropagation();
-                onSelectObject(slabObj.id);
+                if (toolMode === 'measure') handleMeasureTap(e.point);
+                else onSelectObject(slabObj.id);
               }}
             >
               <boxGeometry args={[totalL, 0.2, totalW]} />
@@ -1261,8 +1318,8 @@ const CourtContent: React.FC<CourtContentProps> = ({
                     ? '#2B323E'
                     : project.materials.apronColor
                 }
-                roughness={0.8}
-                metalness={0.06}
+                roughness={0.85}
+                metalness={0.04}
               />
             </mesh>
             <Line
@@ -1279,7 +1336,7 @@ const CourtContent: React.FC<CourtContentProps> = ({
           </group>
         )}
 
-        {/* 2. Playing Surface */}
+        {/* 2. Playing Surface Deck */}
         {surfaceObj && surfaceObj.visible && (
           <mesh
             position={[0, 0.002, 0]}
@@ -1287,7 +1344,8 @@ const CourtContent: React.FC<CourtContentProps> = ({
             receiveShadow={shadowsOn}
             onClick={(e) => {
               e.stopPropagation();
-              onSelectObject(surfaceObj.id);
+              if (toolMode === 'measure') handleMeasureTap(e.point);
+              else onSelectObject(surfaceObj.id);
             }}
           >
             <planeGeometry args={[lengthM + 0.1, widthM + 0.1]} />
@@ -1300,8 +1358,8 @@ const CourtContent: React.FC<CourtContentProps> = ({
             ) : (
               <meshPhysicalMaterial
                 map={surfaceTexture}
-                roughness={isWood ? 0.3 : 0.72}
-                metalness={0.04}
+                roughness={surfaceRoughness}
+                metalness={0.02}
                 clearcoat={isWood ? 0.65 : 0}
                 clearcoatRoughness={0.18}
               />
@@ -1309,141 +1367,64 @@ const CourtContent: React.FC<CourtContentProps> = ({
           </mesh>
         )}
 
-        {/* 3. Free-Throw Areas */}
-        {freeThrowObj && freeThrowObj.visible && (
-          <group
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectObject(freeThrowObj.id);
-            }}
-          >
-            <mesh geometry={freeThrowGeos.paintGeometry} position={[0, 0.004, 0]} receiveShadow={shadowsOn}>
-              <meshStandardMaterial
-                color={
-                  techMode
-                    ? '#1C3B69'
-                    : archMode
-                    ? '#9BA7B8'
-                    : project.materials.paintColor
-                }
-                roughness={isWood ? 0.36 : 0.68}
-                polygonOffset
-                polygonOffsetFactor={-1}
-                polygonOffsetUnits={-1}
-              />
-            </mesh>
-            <mesh geometry={freeThrowGeos.linesGeometry} position={[0, 0.006, 0]} receiveShadow={shadowsOn}>
-              <meshStandardMaterial
-                color={
-                  techMode
-                    ? '#E6F2FF'
-                    : archMode
-                    ? '#141820'
-                    : project.materials.lineColor
-                }
-                roughness={0.45}
-                polygonOffset
-                polygonOffsetFactor={-2}
-                polygonOffsetUnits={-2}
-              />
-            </mesh>
-          </group>
-        )}
+        {/* 3. Compiled Declarative Sport Marking Layers (Single or Multi-Sport Overlay) */}
+        {compiledLayers.map((cl, idx) => {
+          const isSingleBasketball =
+            compiledLayers.length === 1 && effectiveLayers[0]?.sport === 'basketball';
+          const showPaint =
+            !isSingleBasketball || (freeThrowObj ? freeThrowObj.visible : true);
+          const showLines =
+            !isSingleBasketball ||
+            ((boundaryObj ? boundaryObj.visible : true) ||
+              (threePtObj ? threePtObj.visible : true));
 
-        {/* 4. Centre Line & Circle */}
-        {centreObj && centreObj.visible && !isHalfCourt && (
-          <group
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectObject(centreObj.id);
-            }}
-          >
-            <mesh geometry={centreFillGeo} position={[0, 0.004, 0]} receiveShadow={shadowsOn}>
-              <meshStandardMaterial
-                color={
-                  techMode
-                    ? '#1C3B69'
-                    : archMode
-                    ? '#9BA7B8'
-                    : project.materials.paintColor
+          return (
+            <group
+              key={cl.layerId}
+              position={[cl.offsetX, 0, cl.offsetZ]}
+              rotation={[0, cl.rotationRad, 0]}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (toolMode === 'measure') {
+                  handleMeasureTap(e.point);
+                } else if (surfaceObj) {
+                  onSelectObject(surfaceObj.id);
                 }
-                roughness={isWood ? 0.36 : 0.68}
-                polygonOffset
-                polygonOffsetFactor={-1}
-                polygonOffsetUnits={-1}
-              />
-            </mesh>
-            <mesh geometry={centreLinesGeo} position={[0, 0.006, 0]} receiveShadow={shadowsOn}>
-              <meshStandardMaterial
-                color={
-                  techMode
-                    ? '#E6F2FF'
-                    : archMode
-                    ? '#141820'
-                    : project.materials.lineColor
-                }
-                roughness={0.45}
-                polygonOffset
-                polygonOffsetFactor={-2}
-                polygonOffsetUnits={-2}
-              />
-            </mesh>
-          </group>
-        )}
-
-        {/* 5. Boundary Lines */}
-        {boundaryObj && boundaryObj.visible && (
-          <mesh
-            geometry={boundaryGeo}
-            position={[0, 0.0065, 0]}
-            receiveShadow={shadowsOn}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectObject(boundaryObj.id);
-            }}
-          >
-            <meshStandardMaterial
-              color={
-                techMode
-                  ? '#E6F2FF'
-                  : archMode
-                  ? '#141820'
-                  : project.materials.lineColor
-              }
-              roughness={0.45}
-              polygonOffset
-              polygonOffsetFactor={-2}
-              polygonOffsetUnits={-2}
-            />
-          </mesh>
-        )}
-
-        {/* 6. Three-Point Lines */}
-        {threePtObj && threePtObj.visible && (
-          <mesh
-            geometry={threePointGeo}
-            position={[0, 0.0065, 0]}
-            receiveShadow={shadowsOn}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectObject(threePtObj.id);
-            }}
-          >
-            <meshStandardMaterial
-              color={
-                techMode
-                  ? '#E6F2FF'
-                  : archMode
-                  ? '#141820'
-                  : project.materials.lineColor
-              }
-              roughness={0.45}
-              polygonOffset
-              polygonOffsetFactor={-2}
-              polygonOffsetUnits={-2}
-            />
-          </mesh>
-        )}
+              }}
+            >
+              {showPaint && cl.paintColor && cl.paintGeometry.attributes.position && (
+                <mesh
+                  geometry={cl.paintGeometry}
+                  position={[0, 0.004 + idx * 0.0018, 0]}
+                  receiveShadow={shadowsOn}
+                >
+                  <meshStandardMaterial
+                    color={techMode ? '#1C3B69' : archMode ? '#9BA7B8' : cl.paintColor}
+                    roughness={isWood ? 0.36 : 0.72}
+                    polygonOffset
+                    polygonOffsetFactor={-1 - idx * 2}
+                    polygonOffsetUnits={-1}
+                  />
+                </mesh>
+              )}
+              {showLines && cl.linesGeometry.attributes.position && (
+                <mesh
+                  geometry={cl.linesGeometry}
+                  position={[0, 0.006 + idx * 0.0018, 0]}
+                  receiveShadow={shadowsOn}
+                >
+                  <meshStandardMaterial
+                    color={techMode ? '#E6F2FF' : archMode ? '#141820' : cl.lineColor}
+                    roughness={0.45}
+                    polygonOffset
+                    polygonOffsetFactor={-2 - idx * 2}
+                    polygonOffsetUnits={-2}
+                  />
+                </mesh>
+              )}
+            </group>
+          );
+        })}
 
         {isSelectedCourtFloor && (
           <Line
@@ -1459,7 +1440,7 @@ const CourtContent: React.FC<CourtContentProps> = ({
           />
         )}
 
-        {/* 7–11. Interactive Moveable & Rotatable Equipment Assemblies */}
+        {/* 4. Interactive Moveable & Rotatable Equipment Assemblies */}
         {propObjects.map((obj) => {
           const isSelected = obj.id === selectedObjectId;
           return (
@@ -1468,17 +1449,35 @@ const CourtContent: React.FC<CourtContentProps> = ({
               obj={obj}
               isSelected={isSelected}
               toolMode={toolMode}
-              onSelect={onSelectObject}
+              onSelect={(id) => {
+                if (toolMode !== 'measure') onSelectObject(id);
+              }}
               onDraggingChange={setIsTransforming}
               onTransformCommit={onTransformCommit}
             >
               {obj.type === 'hoop_assembly' && (
-                <HoopAssemblyMesh
-                  obj={obj}
-                  isSelected={isSelected}
-                  archMode={archMode}
-                  techMode={techMode}
-                />
+                <HoopAssemblyMesh obj={obj} isSelected={isSelected} archMode={archMode} techMode={techMode} />
+              )}
+              {obj.type === 'football_goal' && (
+                <FootballGoalMesh obj={obj} isSelected={isSelected} archMode={archMode} techMode={techMode} />
+              )}
+              {obj.type === 'handball_goal' && (
+                <HandballGoalMesh obj={obj} isSelected={isSelected} archMode={archMode} techMode={techMode} />
+              )}
+              {obj.type === 'volleyball_net' && (
+                <VolleyballNetMesh obj={obj} isSelected={isSelected} archMode={archMode} techMode={techMode} />
+              )}
+              {obj.type === 'tennis_net' && (
+                <TennisNetMesh obj={obj} isSelected={isSelected} archMode={archMode} techMode={techMode} />
+              )}
+              {obj.type === 'multisport_combo_goal' && (
+                <MultisportComboGoalMesh obj={obj} isSelected={isSelected} archMode={archMode} techMode={techMode} />
+              )}
+              {obj.type === 'dugout_shelter' && (
+                <DugoutShelterMesh obj={obj} isSelected={isSelected} archMode={archMode} techMode={techMode} />
+              )}
+              {obj.type === 'corner_flag' && (
+                <CornerFlagMesh obj={obj} isSelected={isSelected} archMode={archMode || techMode} />
               )}
               {obj.type === 'player_bench' && (
                 <PlayerBenchMesh obj={obj} isSelected={isSelected} archMode={archMode || techMode} />
@@ -1491,24 +1490,27 @@ const CourtContent: React.FC<CourtContentProps> = ({
                   obj={obj}
                   isSelected={isSelected}
                   isNight={isNight}
-                  archMode={archMode || techMode}
+                  archMode={archMode}
+                  techMode={techMode}
                 />
               )}
               {obj.type === 'scoreboard' && (
-                <ScoreboardMesh obj={obj} isSelected={isSelected} archMode={archMode} />
+                <ScoreboardMesh obj={obj} isSelected={isSelected} archMode={archMode} techMode={techMode} />
               )}
               {obj.type === 'perimeter_fence' && (
                 <PerimeterFenceMesh
                   obj={obj}
                   defaultSpan={totalL * 0.72}
                   isSelected={isSelected}
+                  archMode={archMode}
+                  techMode={techMode}
                 />
               )}
               {obj.type === 'bleachers' && (
-                <BleachersMesh obj={obj} isSelected={isSelected} archMode={archMode} />
+                <BleachersMesh obj={obj} isSelected={isSelected} archMode={archMode || techMode} />
               )}
               {obj.type === 'ball_rack' && (
-                <BallRackMesh obj={obj} isSelected={isSelected} archMode={archMode} />
+                <BallRackMesh obj={obj} isSelected={isSelected} archMode={archMode || techMode} />
               )}
             </SelectableObjectGroup>
           );
@@ -1542,14 +1544,14 @@ const CourtContent: React.FC<CourtContentProps> = ({
               lineWidth={1}
             />
             <Text
-              position={[0, 0.05, totalW / 2 + 1.55]}
+              position={[0, 0.05, totalW / 2 + Math.max(1.55, span * 0.03)]}
               rotation={[-Math.PI / 2, 0, 0]}
-              fontSize={0.58}
+              fontSize={Math.max(0.58, span * 0.017)}
               color="#F2F4F7"
               anchorX="center"
               anchorY="middle"
             >
-              {`PLAYING COURT: ${formatLength(lengthM, project.unit)} × ${formatLength(
+              {`PLAYING ZONE: ${formatLength(lengthM, project.unit)} × ${formatLength(
                 widthM,
                 project.unit
               )} (${formatArea(playingAreaSqM, project.unit)})`}
@@ -1580,14 +1582,14 @@ const CourtContent: React.FC<CourtContentProps> = ({
               lineWidth={1}
             />
             <Text
-              position={[totalL / 2 + 1.6, 0.05, 0]}
+              position={[totalL / 2 + Math.max(1.6, span * 0.035), 0.05, 0]}
               rotation={[-Math.PI / 2, 0, -Math.PI / 2]}
-              fontSize={0.56}
+              fontSize={Math.max(0.56, span * 0.016)}
               color="#F2F4F7"
               anchorX="center"
               anchorY="middle"
             >
-              {`WIDTH: ${formatLength(widthM, project.unit)} · CLEARANCE: +${formatLength(
+              {`WIDTH: ${formatLength(widthM, project.unit)} · RUN-OFF: +${formatLength(
                 apronM,
                 project.unit
               )}`}
@@ -1646,6 +1648,14 @@ export const CourtViewport: React.FC<CourtViewportProps> = ({
   const [contextLost, setContextLost] = useState(false);
   const isSoftwareGl = useMemo(() => detectSoftwareGl(), []);
   const shadowsOn = project.environmentSettings.shadowsEnabled && !isSoftwareGl;
+  const cleanupRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    return () => {
+      cleanupRef.current?.();
+      cleanupRef.current = null;
+    };
+  }, []);
 
   if (contextLost) {
     return (
@@ -1676,15 +1686,23 @@ export const CourtViewport: React.FC<CourtViewportProps> = ({
           toneMappingExposure: 1.08,
         }}
         onCreated={({ gl, invalidate }) => {
+          cleanupRef.current?.();
           invalidate();
-          gl.domElement.addEventListener('webglcontextlost', (e) => {
+          const canvasEl = gl.domElement;
+          const onLost = (e: Event) => {
             e.preventDefault();
             setContextLost(true);
-          });
-          gl.domElement.addEventListener('webglcontextrestored', () => {
+          };
+          const onRestored = () => {
             setContextLost(false);
             invalidate();
-          });
+          };
+          canvasEl.addEventListener('webglcontextlost', onLost);
+          canvasEl.addEventListener('webglcontextrestored', onRestored);
+          cleanupRef.current = () => {
+            canvasEl.removeEventListener('webglcontextlost', onLost);
+            canvasEl.removeEventListener('webglcontextrestored', onRestored);
+          };
         }}
       >
         <CourtContent

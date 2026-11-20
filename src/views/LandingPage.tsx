@@ -2,9 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { ArrowRight, Box, Compass, Layers, Ruler } from 'lucide-react';
 import {
   buildDefaultObjects,
+  buildSportLayersForFacility,
   COURT_STANDARDS,
   defaultCameraSettings,
   defaultEnvironmentSettings,
+  GROUND_SYSTEM_PRESETS,
   SURFACE_PRESETS,
 } from '../constants/courtStandards';
 import { useProjectStore } from '../store/useProjectStore';
@@ -20,7 +22,14 @@ export const LandingPage: React.FC = () => {
 
   const previewProject: CourtProject = useMemo(() => {
     const spec = COURT_STANDARDS[previewStandard];
-    const preset = previewEnv === 'indoor' ? SURFACE_PRESETS[0] : SURFACE_PRESETS[2];
+    const targetSurfaceId =
+      spec.sport === 'basketball'
+        ? previewEnv === 'indoor'
+          ? 'hardwood_maple'
+          : 'acrylic_pro'
+        : spec.defaultSurfaceType;
+    const preset =
+      SURFACE_PRESETS.find((s) => s.id === targetSurfaceId) ?? SURFACE_PRESETS[0];
     const dimensions = {
       lengthM: spec.lengthM,
       widthM: spec.widthM,
@@ -36,22 +45,38 @@ export const LandingPage: React.FC = () => {
       paintColor: preset.defaultPaintColor,
       lineColor: '#F2F4F7',
     };
+    const sportLayers = buildSportLayersForFacility(
+      previewStandard,
+      dimensions.lengthM,
+      dimensions.widthM,
+      materials
+    );
     return {
       id: 'landing-preview',
       name: `${spec.label} Interactive Preview`,
       client: 'Reference Geometry',
       location: '3D Sandbox',
       notes: '',
+      sport: spec.sport,
       standard: previewStandard,
+      groundSystem: spec.defaultGroundSystem,
       environment: previewEnv,
       template: 'standard',
       status: 'Specification Ready',
       unit: 'm',
       dimensions,
       materials,
+      sportLayers,
       environmentSettings: defaultEnvironmentSettings(previewEnv),
       cameraSettings: defaultCameraSettings(dimensions.lengthM, dimensions.widthM),
-      objects: buildDefaultObjects(dimensions, previewEnv, 'standard', materials),
+      objects: buildDefaultObjects(
+        dimensions,
+        previewEnv,
+        'standard',
+        materials,
+        previewStandard,
+        sportLayers
+      ),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       lastOpenedAt: new Date().toISOString(),
@@ -61,35 +86,51 @@ export const LandingPage: React.FC = () => {
   const capabilities = [
     {
       num: '01',
-      title: 'Regulation-Accurate Court Geometry',
-      body: 'Generate FIBA, NBA, NCAA, 3x3, or custom court envelopes with calibrated three-point arcs, key dimensions, and safety apron clearances.',
+      title: 'Multi-Sport Regulation Geometry',
+      body: 'Generate FIBA, NBA, NCAA, 3x3, FIFA football pitches, IHF handball, FIVB volleyball, ITF tennis, and multi-sport facilities from one parametric primitives engine.',
       icon: Ruler,
     },
     {
       num: '02',
       title: 'Interactive 3D Architectural Viewport',
-      body: 'Inspect hoop stanchion overhangs, tempered glass backboards, lighting masts, and surface reflections from orbit, plan, baseline, or sideline views.',
+      body: 'Inspect hoop stanchion overhangs, football & handball goals, tensioned nets, combo goals, and lighting masts across indoor and outdoor grounds.',
       icon: Box,
     },
     {
       num: '03',
-      title: 'Indoor & Outdoor Construction Systems',
-      body: 'Switch seamlessly between sprung maple arena floors and post-tensioned outdoor acrylic or modular polymer tile installations.',
+      title: '8 Civil Ground & Surfacing Systems',
+      body: 'Switch between concrete slabs, asphalt decks, sprung maple wood, synthetic turf, natural grass, red clay, silica sand, or renovation on an existing slab.',
       icon: Layers,
     },
     {
       num: '04',
-      title: 'Parametric Component & Spec Inspector',
-      body: 'Select any structural assembly in the 3D scene or outliner to adjust coordinates, orientation, finishes, and export engineering specifications.',
+      title: 'Synced CAD Plans, BOM & FCFA Costing',
+      body: 'Every 3D sport layer, dimension, and placed assembly updates 7 technical SVG/PDF sheets, civil material takeoffs, and 10-stage construction schedules.',
       icon: Compass,
     },
   ];
 
   const standardRows = [
-    COURT_STANDARDS.FIBA,
-    COURT_STANDARDS.NBA,
-    COURT_STANDARDS.NCAA,
-    COURT_STANDARDS.FIBA_3X3,
+    { spec: COURT_STANDARDS.FIBA, specHeight: 'Rim 3.05 m' },
+    { spec: COURT_STANDARDS.NBA, specHeight: 'Rim 3.05 m' },
+    { spec: COURT_STANDARDS.FIBA_3X3, specHeight: 'Rim 3.05 m' },
+    { spec: COURT_STANDARDS.FOOTBALL_11, specHeight: 'Goal 7.32 × 2.44 m' },
+    { spec: COURT_STANDARDS.FOOTBALL_7, specHeight: 'Goal 6.00 × 2.10 m' },
+    { spec: COURT_STANDARDS.HANDBALL_IHF, specHeight: 'Goal 3.00 × 2.00 m' },
+    { spec: COURT_STANDARDS.VOLLEYBALL_STD, specHeight: 'Net 2.43 / 2.24 m' },
+    { spec: COURT_STANDARDS.TENNIS_DOUBLES, specHeight: 'Net 1.07 / 0.914 m' },
+    { spec: COURT_STANDARDS.MULTISPORT_40X20, specHeight: 'Combo 3×2 m + 3.05 m' },
+  ];
+
+  const previewTabs: CourtStandard[] = [
+    'FIBA',
+    'NBA',
+    'FOOTBALL_7',
+    'TENNIS_DOUBLES',
+    'HANDBALL_IHF',
+    'VOLLEYBALL_STD',
+    'MULTISPORT_40X20',
+    'FIBA_3X3',
   ];
 
   return (
@@ -104,18 +145,18 @@ export const LandingPage: React.FC = () => {
             <div className="lg:col-span-5 flex flex-col justify-between">
               <div>
                 <p className="text-xs font-mono-tech uppercase tracking-[0.14em] text-[#F07827] mb-4">
-                  Architectural 3D Court CAD
+                  Architectural 3D Sports Ground CAD
                 </p>
                 <h1
                   className="font-display font-bold tracking-tight text-[#F2F4F7] leading-[1.08] mb-5"
                   style={{ fontSize: 'clamp(2.25rem, 3.8vw, 3.5rem)', textWrap: 'balance' }}
                 >
-                  Design and engineer basketball courts in precision 3D.
+                  Design and engineer basketball courts &amp; sports grounds in 3D.
                 </h1>
                 <p className="text-base text-[#9AA4B2] leading-relaxed max-w-xl mb-8">
-                  Basketball Court Studio gives architects, municipal planners, and facility builders
-                  an interactive 3D CAD workspace to configure regulation court geometry, surfacing
-                  systems, hoop stanchions, and site clearances before construction begins.
+                  Basketball Court Studio equips architects, municipal planners, and facility builders
+                  with an interactive 3D CAD workspace for basketball, football, handball, volleyball,
+                  tennis, and multi-sport plateaus—linked directly to plans, BOM, and FCFA costing.
                 </p>
 
                 <div className="flex flex-wrap items-center gap-4 mb-10">
@@ -144,16 +185,16 @@ export const LandingPage: React.FC = () => {
               {/* Grounded dimensional summary */}
               <div className="grid grid-cols-3 gap-4 pt-6 border-t border-white/10">
                 <div>
-                  <div className="font-mono-tech text-lg font-semibold text-[#F2F4F7]">4 Standards</div>
-                  <div className="text-xs text-[#9AA4B2] mt-0.5">FIBA · NBA · NCAA · 3x3</div>
+                  <div className="font-mono-tech text-lg font-semibold text-[#F2F4F7]">6+ Sports</div>
+                  <div className="text-xs text-[#9AA4B2] mt-0.5">Basket · Foot · Volley · Tennis · Handball</div>
                 </div>
                 <div>
-                  <div className="font-mono-tech text-lg font-semibold text-[#F2F4F7]">m / ft</div>
-                  <div className="text-xs text-[#9AA4B2] mt-0.5">Dual-unit CAD precision</div>
+                  <div className="font-mono-tech text-lg font-semibold text-[#F2F4F7]">8 Ground Systems</div>
+                  <div className="text-xs text-[#9AA4B2] mt-0.5">Concrete, Turf, Clay, Sand &amp; Wood</div>
                 </div>
                 <div>
                   <div className="font-mono-tech text-lg font-semibold text-[#F2F4F7]">Real-Time 3D</div>
-                  <div className="text-xs text-[#9AA4B2] mt-0.5">Orbit, inspect &amp; place</div>
+                  <div className="text-xs text-[#9AA4B2] mt-0.5">CAD sheets, BOM &amp; FCFA costing</div>
                 </div>
               </div>
             </div>
@@ -161,13 +202,13 @@ export const LandingPage: React.FC = () => {
             {/* Right Interactive Live 3D Viewport */}
             <div className="lg:col-span-7 flex flex-col bg-[#1A2029] border border-white/10 rounded-lg overflow-hidden min-h-[380px] lg:min-h-[500px]">
               <div className="px-4 py-3 bg-[#202630] border-b border-white/10 flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-1.5">
-                  {(['FIBA', 'NBA', 'FIBA_3X3'] as CourtStandard[]).map((std) => (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {previewTabs.map((std) => (
                     <button
                       key={std}
                       type="button"
                       onClick={() => setPreviewStandard(std)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap cursor-pointer ${
+                      className={`px-2.5 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap cursor-pointer ${
                         previewStandard === std
                           ? 'bg-[#F07827] text-[#111318] font-semibold'
                           : 'text-[#9AA4B2] hover:text-[#F2F4F7] hover:bg-white/5'
@@ -290,34 +331,39 @@ export const LandingPage: React.FC = () => {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-white/10 bg-[#202630] text-xs font-medium text-[#9AA4B2]">
-                    <th className="py-3.5 px-5">Court Standard</th>
+                    <th className="py-3.5 px-5">Facility Standard</th>
                     <th className="py-3.5 px-5">Playing Envelope</th>
-                    <th className="py-3.5 px-5">3-Point Arc</th>
-                    <th className="py-3.5 px-5">Key Width</th>
+                    <th className="py-3.5 px-5">Rim / Goal / Net Spec</th>
+                    <th className="py-3.5 px-5">Ground Build-Up</th>
                     <th className="py-3.5 px-5">Default Apron</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/8 text-sm">
-                  {standardRows.map((std) => (
-                    <tr key={std.id} className="hover:bg-[#202630]/60 transition-colors">
-                      <td className="py-4 px-5">
-                        <div className="font-semibold text-[#F2F4F7]">{std.label}</div>
-                        <div className="text-xs text-[#9AA4B2] mt-0.5">{std.description}</div>
-                      </td>
-                      <td className="py-4 px-5 font-mono-tech text-[#F2F4F7] whitespace-nowrap">
-                        {std.lengthM.toFixed(2)} × {std.widthM.toFixed(2)} m
-                      </td>
-                      <td className="py-4 px-5 font-mono-tech text-[#9AA4B2] whitespace-nowrap">
-                        {std.threePointRadiusM.toFixed(2)} m
-                      </td>
-                      <td className="py-4 px-5 font-mono-tech text-[#9AA4B2] whitespace-nowrap">
-                        {std.keyWidthM.toFixed(2)} m
-                      </td>
-                      <td className="py-4 px-5 font-mono-tech text-[#9AA4B2] whitespace-nowrap">
-                        +{std.defaultApronM.toFixed(2)} m perimeter
-                      </td>
-                    </tr>
-                  ))}
+                  {standardRows.map(({ spec: std, specHeight }) => {
+                    const groundLabel =
+                      GROUND_SYSTEM_PRESETS.find((g) => g.id === std.defaultGroundSystem)?.shortLabel ??
+                      std.defaultGroundSystem;
+                    return (
+                      <tr key={std.id} className="hover:bg-[#202630]/60 transition-colors">
+                        <td className="py-4 px-5">
+                          <div className="font-semibold text-[#F2F4F7]">{std.label}</div>
+                          <div className="text-xs text-[#9AA4B2] mt-0.5">{std.description}</div>
+                        </td>
+                        <td className="py-4 px-5 font-mono-tech text-[#F2F4F7] whitespace-nowrap">
+                          {std.lengthM.toFixed(2)} × {std.widthM.toFixed(2)} m
+                        </td>
+                        <td className="py-4 px-5 font-mono-tech text-[#9AA4B2] whitespace-nowrap">
+                          {specHeight}
+                        </td>
+                        <td className="py-4 px-5 text-[#9AA4B2] whitespace-nowrap">
+                          {groundLabel}
+                        </td>
+                        <td className="py-4 px-5 font-mono-tech text-[#9AA4B2] whitespace-nowrap">
+                          +{std.defaultApronM.toFixed(2)} m perimeter
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

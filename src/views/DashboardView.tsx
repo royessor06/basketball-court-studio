@@ -15,9 +15,14 @@ import {
   Upload,
 } from 'lucide-react';
 import { TopNav } from '../components/layout/TopNav';
-import { COURT_STANDARDS, formatLength } from '../constants/courtStandards';
+import {
+  COURT_STANDARDS,
+  formatLength,
+  GROUND_SYSTEM_PRESETS,
+  SPORT_DISCIPLINES,
+} from '../constants/courtStandards';
 import { useProjectStore } from '../store/useProjectStore';
-import { CourtEnvironment, CourtProject, ProjectStatus } from '../types/court';
+import { CourtEnvironment, CourtProject, ProjectStatus, SportDiscipline } from '../types/court';
 
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -76,6 +81,7 @@ export const DashboardView: React.FC = () => {
   } = useProjectStore();
 
   const [query, setQuery] = useState('');
+  const [sportFilter, setSportFilter] = useState<'ALL' | SportDiscipline>('ALL');
   const [statusFilter, setStatusFilter] = useState<'ALL' | ProjectStatus>('ALL');
   const [envFilter, setEnvFilter] = useState<'ALL' | CourtEnvironment>('ALL');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -110,16 +116,18 @@ export const DashboardView: React.FC = () => {
 
   const filteredProjects = useMemo(() => {
     return projects.filter((p) => {
+      const pSport = p.sport ?? COURT_STANDARDS[p.standard].sport;
       const matchesQuery =
         !query.trim() ||
         p.name.toLowerCase().includes(query.toLowerCase()) ||
         p.client.toLowerCase().includes(query.toLowerCase()) ||
         p.location.toLowerCase().includes(query.toLowerCase());
+      const matchesSport = sportFilter === 'ALL' || pSport === sportFilter;
       const matchesStatus = statusFilter === 'ALL' || p.status === statusFilter;
       const matchesEnv = envFilter === 'ALL' || p.environment === envFilter;
-      return matchesQuery && matchesStatus && matchesEnv;
+      return matchesQuery && matchesSport && matchesStatus && matchesEnv;
     });
-  }, [projects, query, statusFilter, envFilter]);
+  }, [projects, query, sportFilter, statusFilter, envFilter]);
 
   const counts = useMemo(
     () => ({
@@ -131,9 +139,16 @@ export const DashboardView: React.FC = () => {
     [projects]
   );
 
+  const getGroundShortLabel = (p: CourtProject) => {
+    const sys = p.groundSystem ?? COURT_STANDARDS[p.standard].defaultGroundSystem;
+    return GROUND_SYSTEM_PRESETS.find((g) => g.id === sys)?.shortLabel ?? 'Concrete Slab';
+  };
+
   const renderProjectMeta = (p: CourtProject) => (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#9AA4B2]">
       <span>{COURT_STANDARDS[p.standard].shortLabel}</span>
+      <span aria-hidden="true">·</span>
+      <span>{getGroundShortLabel(p)}</span>
       <span aria-hidden="true">·</span>
       <span className="capitalize">{p.environment}</span>
       <span aria-hidden="true">·</span>
@@ -253,9 +268,9 @@ export const DashboardView: React.FC = () => {
                 <Plus className="w-5 h-5" />
               </div>
               <div className="mt-4">
-                <div className="font-display font-semibold text-[#F2F4F7]">New Court Design</div>
+                <div className="font-display font-semibold text-[#F2F4F7]">New Facility Design</div>
                 <div className="text-xs text-[#9AA4B2] mt-1">
-                  Start from FIBA, NBA, 3x3, or blank slab
+                  Basketball, Football, Handball, Volleyball, Tennis &amp; Multi-Sport
                 </div>
               </div>
             </button>
@@ -317,6 +332,21 @@ export const DashboardView: React.FC = () => {
                   className="w-full pl-9 pr-3 py-2 bg-[#1A2029] border border-white/10 rounded-md text-xs text-[#F2F4F7] placeholder-[#9AA4B2] focus:outline-none focus:border-[#1686C9]"
                 />
               </div>
+
+              {/* Sport Discipline Filter */}
+              <select
+                aria-label="Filter by sport discipline"
+                value={sportFilter}
+                onChange={(e) => setSportFilter(e.target.value as 'ALL' | SportDiscipline)}
+                className="px-3 py-2 bg-[#1A2029] border border-white/10 rounded-md text-xs text-[#F2F4F7] focus:outline-none focus:border-[#1686C9]"
+              >
+                <option value="ALL">All Sports</option>
+                {SPORT_DISCIPLINES.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.shortLabel}
+                  </option>
+                ))}
+              </select>
 
               {/* Environment Filter */}
               <div className="flex items-center bg-[#1A2029] border border-white/10 rounded-md p-0.5">
@@ -405,7 +435,7 @@ export const DashboardView: React.FC = () => {
                         </div>
                       </td>
                       <td className="py-3.5 px-4 text-xs text-[#F2F4F7] whitespace-nowrap">
-                        {COURT_STANDARDS[p.standard].shortLabel} ·{' '}
+                        {COURT_STANDARDS[p.standard].shortLabel} · {getGroundShortLabel(p)} ·{' '}
                         <span className="capitalize text-[#9AA4B2]">{p.environment}</span>
                       </td>
                       <td className="py-3.5 px-4 font-mono-tech text-xs text-[#F2F4F7] whitespace-nowrap">

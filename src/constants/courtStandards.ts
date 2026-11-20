@@ -8,20 +8,28 @@ import {
   CourtStandard,
   EngineeringAssumptions,
   EnvironmentSettings,
+  GroundSystemType,
+  LayerSportType,
   MeasurementUnit,
   ProjectTemplate,
   SceneObject,
+  SportDiscipline,
+  SportMarkingLayer,
   SurfaceMaterialType,
 } from '../types/court';
 
 export interface StandardSpecification {
   id: CourtStandard;
+  sport: SportDiscipline;
+  layerSport: LayerSportType;
   label: string;
   shortLabel: string;
   description: string;
   lengthM: number;
   widthM: number;
   defaultApronM: number;
+  defaultGroundSystem: GroundSystemType;
+  defaultSurfaceType: SurfaceMaterialType;
   isHalfCourt: boolean;
   threePointRadiusM: number;
   threePointCornerInsetM: number;
@@ -35,16 +43,143 @@ export interface StandardSpecification {
   lineWidthM: number;
 }
 
+export const SPORT_DISCIPLINES: Array<{
+  id: SportDiscipline;
+  label: string;
+  shortLabel: string;
+  summary: string;
+  defaultPreset: CourtStandard;
+}> = [
+  {
+    id: 'basketball',
+    label: 'Basketball Courts',
+    shortLabel: 'Basketball',
+    summary: 'FIBA, NBA, NCAA, 3x3 half-court & custom basketball.',
+    defaultPreset: 'FIBA',
+  },
+  {
+    id: 'football',
+    label: 'Football Pitches',
+    shortLabel: 'Football',
+    summary: 'FIFA 11v11 (105×68 m), 7v7 (60×40 m) & 5v5 / Futsal.',
+    defaultPreset: 'FOOTBALL_11',
+  },
+  {
+    id: 'handball',
+    label: 'Handball Courts',
+    shortLabel: 'Handball',
+    summary: 'IHF 40×20 m court with 6 m / 9 m arcs & 3×2 m goals.',
+    defaultPreset: 'HANDBALL_IHF',
+  },
+  {
+    id: 'volleyball',
+    label: 'Volleyball & Beach',
+    shortLabel: 'Volleyball',
+    summary: 'FIVB 18×9 m indoor/outdoor & 16×8 m beach sand.',
+    defaultPreset: 'VOLLEYBALL_STD',
+  },
+  {
+    id: 'tennis',
+    label: 'Tennis Courts',
+    shortLabel: 'Tennis',
+    summary: 'ITF 23.77×10.97 m doubles/singles (acrylic, clay, turf).',
+    defaultPreset: 'TENNIS_DOUBLES',
+  },
+  {
+    id: 'multisport',
+    label: 'Multi-Sport Facilities',
+    shortLabel: 'Multi-Sport',
+    summary: 'City-stade & plateau multisports with stacked court layers.',
+    defaultPreset: 'MULTISPORT_40X20',
+  },
+  {
+    id: 'custom',
+    label: 'Custom Configurable',
+    shortLabel: 'Configurable',
+    summary: 'Bespoke dimensions, ground build-up & custom marking layers.',
+    defaultPreset: 'CUSTOM',
+  },
+];
+
+export const GROUND_SYSTEM_PRESETS: Array<{
+  id: GroundSystemType;
+  label: string;
+  shortLabel: string;
+  description: string;
+  recommendedSurfaces: SurfaceMaterialType[];
+}> = [
+  {
+    id: 'concrete_slab',
+    label: 'Reinforced Concrete Slab C25/30',
+    shortLabel: 'Concrete Slab',
+    description: 'Excavation, crushed sub-base, polyane & 15 cm reinforced slab.',
+    recommendedSurfaces: ['acrylic_pro', 'pu_multisport', 'modular_tile'],
+  },
+  {
+    id: 'asphalt_base',
+    label: 'Porous / Hot-Mix Asphalt Deck',
+    shortLabel: 'Asphalt Base',
+    description: 'Draining crushed rock base with dual-coat asphalt wearing deck.',
+    recommendedSurfaces: ['asphalt_textured', 'acrylic_pro', 'pu_multisport'],
+  },
+  {
+    id: 'sprung_wood',
+    label: 'Indoor Sprung Maple Subfloor',
+    shortLabel: 'Sprung Maple',
+    description: 'Concrete slab + moisture barrier + elastic battens & maple deck.',
+    recommendedSurfaces: ['hardwood_maple', 'hardwood_dark'],
+  },
+  {
+    id: 'synthetic_turf',
+    label: 'Draining Sub-Base + Synthetic Turf',
+    shortLabel: 'Synthetic Turf',
+    description: 'Geotextile, herringbone drainage, shock pad & 50mm turf infill.',
+    recommendedSurfaces: ['synthetic_turf'],
+  },
+  {
+    id: 'natural_grass',
+    label: 'Draining Rootzone + Natural Turf',
+    shortLabel: 'Natural Grass',
+    description: 'Deep slit drainage, sand rootzone, sodding & automated irrigation.',
+    recommendedSurfaces: ['natural_grass'],
+  },
+  {
+    id: 'clay_court',
+    label: 'Traditional Crushed Brick Clay',
+    shortLabel: 'Red Clay',
+    description: 'Draining clinker base, limestone bed & rolled red clay surface.',
+    recommendedSurfaces: ['clay_red'],
+  },
+  {
+    id: 'sand_court',
+    label: 'Washed Silica Beach Sand Bed',
+    shortLabel: 'Beach Sand',
+    description: 'Geotextile separation & 35 cm calibrated rounded silica sand.',
+    recommendedSurfaces: ['beach_sand'],
+  },
+  {
+    id: 'existing_slab',
+    label: 'Renovation on Existing Slab',
+    shortLabel: 'Existing Slab',
+    description: 'Surface grinding, self-leveling & finish coat (no earthworks/slab).',
+    recommendedSurfaces: ['acrylic_pro', 'pu_multisport', 'modular_tile', 'hardwood_maple'],
+  },
+];
+
 export const COURT_STANDARDS: Record<CourtStandard, StandardSpecification> = {
   FIBA: {
     id: 'FIBA',
+    sport: 'basketball',
+    layerSport: 'basketball',
     label: 'FIBA Official',
     shortLabel: 'FIBA',
     description:
-      'International regulation 28.00 × 15.00 m (420 m²) playing court with 6.75 m arc and 3.05 m rim.',
+      'International regulation 28.00 × 15.00 m (420 m²) basketball court with 6.75 m arc and 3.05 m rim.',
     lengthM: 28.0,
     widthM: 15.0,
     defaultApronM: 2.0,
+    defaultGroundSystem: 'concrete_slab',
+    defaultSurfaceType: 'hardwood_maple',
     isHalfCourt: false,
     threePointRadiusM: 6.75,
     threePointCornerInsetM: 0.9,
@@ -59,12 +194,16 @@ export const COURT_STANDARDS: Record<CourtStandard, StandardSpecification> = {
   },
   NBA: {
     id: 'NBA',
+    sport: 'basketball',
+    layerSport: 'basketball',
     label: 'NBA Regulation',
     shortLabel: 'NBA',
     description: 'North American professional arena dimensions with 7.24 m three-point arc.',
     lengthM: 28.65,
     widthM: 15.24,
     defaultApronM: 2.2,
+    defaultGroundSystem: 'concrete_slab',
+    defaultSurfaceType: 'acrylic_pro',
     isHalfCourt: false,
     threePointRadiusM: 7.24,
     threePointCornerInsetM: 0.91,
@@ -79,12 +218,16 @@ export const COURT_STANDARDS: Record<CourtStandard, StandardSpecification> = {
   },
   NCAA: {
     id: 'NCAA',
+    sport: 'basketball',
+    layerSport: 'basketball',
     label: 'NCAA / Collegiate',
     shortLabel: 'NCAA',
     description: 'Collegiate and institutional gymnasium specification with 6.75 m arc.',
     lengthM: 28.65,
     widthM: 15.24,
     defaultApronM: 1.8,
+    defaultGroundSystem: 'sprung_wood',
+    defaultSurfaceType: 'hardwood_maple',
     isHalfCourt: false,
     threePointRadiusM: 6.75,
     threePointCornerInsetM: 1.0,
@@ -99,13 +242,233 @@ export const COURT_STANDARDS: Record<CourtStandard, StandardSpecification> = {
   },
   FIBA_3X3: {
     id: 'FIBA_3X3',
+    sport: 'basketball',
+    layerSport: 'basketball',
     label: 'FIBA 3x3 Half-Court',
     shortLabel: '3x3',
     description: 'Compact urban and tournament half-court footprint with single stanchion assembly.',
     lengthM: 11.0,
     widthM: 15.0,
     defaultApronM: 1.8,
+    defaultGroundSystem: 'concrete_slab',
+    defaultSurfaceType: 'modular_tile',
     isHalfCourt: true,
+    threePointRadiusM: 6.75,
+    threePointCornerInsetM: 0.9,
+    basketCenterFromBaselineM: 1.575,
+    backboardFromBaselineM: 1.2,
+    rimHeightM: 3.05,
+    keyWidthM: 4.9,
+    keyLengthM: 5.8,
+    freeThrowRadiusM: 1.8,
+    centerCircleRadiusM: 1.8,
+    lineWidthM: 0.05,
+  },
+  FOOTBALL_11: {
+    id: 'FOOTBALL_11',
+    sport: 'football',
+    layerSport: 'football',
+    label: 'FIFA 11v11 Stadium Pitch',
+    shortLabel: 'Foot 11v11',
+    description: 'Full-size 105.00 × 68.00 m international football pitch with 16.5 m penalty boxes.',
+    lengthM: 105.0,
+    widthM: 68.0,
+    defaultApronM: 5.0,
+    defaultGroundSystem: 'synthetic_turf',
+    defaultSurfaceType: 'synthetic_turf',
+    isHalfCourt: false,
+    threePointRadiusM: 6.75,
+    threePointCornerInsetM: 0.9,
+    basketCenterFromBaselineM: 1.575,
+    backboardFromBaselineM: 1.2,
+    rimHeightM: 3.05,
+    keyWidthM: 4.9,
+    keyLengthM: 5.8,
+    freeThrowRadiusM: 1.8,
+    centerCircleRadiusM: 9.15,
+    lineWidthM: 0.12,
+  },
+  FOOTBALL_7: {
+    id: 'FOOTBALL_7',
+    sport: 'football',
+    layerSport: 'football',
+    label: 'Football 7v7 / 8v8 Youth',
+    shortLabel: 'Foot 7v7',
+    description: 'Community synthetic turf 60.00 × 40.00 m pitch with 6.0 × 2.1 m goals.',
+    lengthM: 60.0,
+    widthM: 40.0,
+    defaultApronM: 3.0,
+    defaultGroundSystem: 'synthetic_turf',
+    defaultSurfaceType: 'synthetic_turf',
+    isHalfCourt: false,
+    threePointRadiusM: 6.75,
+    threePointCornerInsetM: 0.9,
+    basketCenterFromBaselineM: 1.575,
+    backboardFromBaselineM: 1.2,
+    rimHeightM: 3.05,
+    keyWidthM: 4.9,
+    keyLengthM: 5.8,
+    freeThrowRadiusM: 1.8,
+    centerCircleRadiusM: 6.0,
+    lineWidthM: 0.1,
+  },
+  FOOTBALL_5: {
+    id: 'FOOTBALL_5',
+    sport: 'football',
+    layerSport: 'football',
+    label: 'Futsal / Five-a-Side (40×20)',
+    shortLabel: 'Futsal 5v5',
+    description: 'Regulation 40.00 × 20.00 m futsal / 5-a-side arena with 6 m D-arcs and 3×2 m goals.',
+    lengthM: 40.0,
+    widthM: 20.0,
+    defaultApronM: 2.0,
+    defaultGroundSystem: 'concrete_slab',
+    defaultSurfaceType: 'pu_multisport',
+    isHalfCourt: false,
+    threePointRadiusM: 6.75,
+    threePointCornerInsetM: 0.9,
+    basketCenterFromBaselineM: 1.575,
+    backboardFromBaselineM: 1.2,
+    rimHeightM: 3.05,
+    keyWidthM: 4.9,
+    keyLengthM: 5.8,
+    freeThrowRadiusM: 1.8,
+    centerCircleRadiusM: 3.0,
+    lineWidthM: 0.08,
+  },
+  VOLLEYBALL_STD: {
+    id: 'VOLLEYBALL_STD',
+    sport: 'volleyball',
+    layerSport: 'volleyball',
+    label: 'FIVB Volleyball Court',
+    shortLabel: 'Volleyball',
+    description: 'Official 18.00 × 9.00 m volleyball court with 3 m attack lines and tensioned net.',
+    lengthM: 18.0,
+    widthM: 9.0,
+    defaultApronM: 3.5,
+    defaultGroundSystem: 'concrete_slab',
+    defaultSurfaceType: 'pu_multisport',
+    isHalfCourt: false,
+    threePointRadiusM: 6.75,
+    threePointCornerInsetM: 0.9,
+    basketCenterFromBaselineM: 1.575,
+    backboardFromBaselineM: 1.2,
+    rimHeightM: 3.05,
+    keyWidthM: 4.9,
+    keyLengthM: 5.8,
+    freeThrowRadiusM: 1.8,
+    centerCircleRadiusM: 1.8,
+    lineWidthM: 0.05,
+  },
+  BEACH_VOLLEY: {
+    id: 'BEACH_VOLLEY',
+    sport: 'volleyball',
+    layerSport: 'volleyball',
+    label: 'Beach Volleyball (Sand)',
+    shortLabel: 'Beach Volley',
+    description: '16.00 × 8.00 m court on 35 cm washed silica sand bed with 3 m free zone.',
+    lengthM: 16.0,
+    widthM: 8.0,
+    defaultApronM: 3.0,
+    defaultGroundSystem: 'sand_court',
+    defaultSurfaceType: 'beach_sand',
+    isHalfCourt: false,
+    threePointRadiusM: 6.75,
+    threePointCornerInsetM: 0.9,
+    basketCenterFromBaselineM: 1.575,
+    backboardFromBaselineM: 1.2,
+    rimHeightM: 3.05,
+    keyWidthM: 4.9,
+    keyLengthM: 5.8,
+    freeThrowRadiusM: 1.8,
+    centerCircleRadiusM: 1.8,
+    lineWidthM: 0.05,
+  },
+  TENNIS_DOUBLES: {
+    id: 'TENNIS_DOUBLES',
+    sport: 'tennis',
+    layerSport: 'tennis',
+    label: 'ITF Tennis Court (Doubles)',
+    shortLabel: 'Tennis',
+    description: '23.77 × 10.97 m regulation tennis court with singles sidelines, service boxes & high fence.',
+    lengthM: 23.77,
+    widthM: 10.97,
+    defaultApronM: 4.5,
+    defaultGroundSystem: 'concrete_slab',
+    defaultSurfaceType: 'acrylic_pro',
+    isHalfCourt: false,
+    threePointRadiusM: 6.75,
+    threePointCornerInsetM: 0.9,
+    basketCenterFromBaselineM: 1.575,
+    backboardFromBaselineM: 1.2,
+    rimHeightM: 3.05,
+    keyWidthM: 4.9,
+    keyLengthM: 5.8,
+    freeThrowRadiusM: 1.8,
+    centerCircleRadiusM: 1.8,
+    lineWidthM: 0.05,
+  },
+  HANDBALL_IHF: {
+    id: 'HANDBALL_IHF',
+    sport: 'handball',
+    layerSport: 'handball',
+    label: 'IHF Handball Court',
+    shortLabel: 'Handball',
+    description: 'Official 40.00 × 20.00 m handball court with 6 m goal area, 9 m dashed arc & 3×2 m goals.',
+    lengthM: 40.0,
+    widthM: 20.0,
+    defaultApronM: 2.0,
+    defaultGroundSystem: 'concrete_slab',
+    defaultSurfaceType: 'pu_multisport',
+    isHalfCourt: false,
+    threePointRadiusM: 6.75,
+    threePointCornerInsetM: 0.9,
+    basketCenterFromBaselineM: 1.575,
+    backboardFromBaselineM: 1.2,
+    rimHeightM: 3.05,
+    keyWidthM: 4.9,
+    keyLengthM: 5.8,
+    freeThrowRadiusM: 1.8,
+    centerCircleRadiusM: 1.8,
+    lineWidthM: 0.05,
+  },
+  MULTISPORT_40X20: {
+    id: 'MULTISPORT_40X20',
+    sport: 'multisport',
+    layerSport: 'handball',
+    label: 'Multi-Sport Plateau (40×20)',
+    shortLabel: 'Multi 40×20',
+    description: '40 × 20 m municipal plateau combining Handball, Basketball & Volleyball + combo goals.',
+    lengthM: 40.0,
+    widthM: 20.0,
+    defaultApronM: 2.0,
+    defaultGroundSystem: 'concrete_slab',
+    defaultSurfaceType: 'pu_multisport',
+    isHalfCourt: false,
+    threePointRadiusM: 6.75,
+    threePointCornerInsetM: 0.9,
+    basketCenterFromBaselineM: 1.575,
+    backboardFromBaselineM: 1.2,
+    rimHeightM: 3.05,
+    keyWidthM: 4.9,
+    keyLengthM: 5.8,
+    freeThrowRadiusM: 1.8,
+    centerCircleRadiusM: 1.8,
+    lineWidthM: 0.05,
+  },
+  MULTISPORT_30X18: {
+    id: 'MULTISPORT_30X18',
+    sport: 'multisport',
+    layerSport: 'basketball',
+    label: 'City-Stade Multi-Sport (30×18)',
+    shortLabel: 'City 30×18',
+    description: 'Compact 30 × 18 m urban city-stade combining Basketball, 5-a-side Football & Volleyball.',
+    lengthM: 30.0,
+    widthM: 18.0,
+    defaultApronM: 1.8,
+    defaultGroundSystem: 'asphalt_base',
+    defaultSurfaceType: 'pu_multisport',
+    isHalfCourt: false,
     threePointRadiusM: 6.75,
     threePointCornerInsetM: 0.9,
     basketCenterFromBaselineM: 1.575,
@@ -119,20 +482,24 @@ export const COURT_STANDARDS: Record<CourtStandard, StandardSpecification> = {
   },
   CUSTOM: {
     id: 'CUSTOM',
-    label: 'Custom Dimensions',
+    sport: 'custom',
+    layerSport: 'basketball',
+    label: 'Custom Configurable Facility',
     shortLabel: 'Custom',
-    description: 'User-defined court envelope for residential driveways, rooftops, or training bays.',
-    lengthM: 24.0,
-    widthM: 14.0,
-    defaultApronM: 1.5,
+    description: 'User-defined court or pitch envelope with customizable layers, ground system & fixtures.',
+    lengthM: 28.0,
+    widthM: 15.0,
+    defaultApronM: 2.0,
+    defaultGroundSystem: 'concrete_slab',
+    defaultSurfaceType: 'acrylic_pro',
     isHalfCourt: false,
-    threePointRadiusM: 6.25,
+    threePointRadiusM: 6.75,
     threePointCornerInsetM: 0.9,
     basketCenterFromBaselineM: 1.575,
     backboardFromBaselineM: 1.2,
     rimHeightM: 3.05,
-    keyWidthM: 4.4,
-    keyLengthM: 5.4,
+    keyWidthM: 4.9,
+    keyLengthM: 5.8,
     freeThrowRadiusM: 1.8,
     centerCircleRadiusM: 1.8,
     lineWidthM: 0.05,
@@ -169,11 +536,20 @@ export const SURFACE_PRESETS: Array<{
   {
     id: 'acrylic_pro',
     label: 'Pro Cushioned Acrylic',
-    recommendedEnv: 'outdoor',
+    recommendedEnv: 'both',
     defaultSurfaceColor: '#1F4B7A',
     defaultApronColor: '#2B3340',
     defaultPaintColor: '#D45E1A',
     roughness: 0.72,
+  },
+  {
+    id: 'pu_multisport',
+    label: 'Seamless PU Multisport Resin',
+    recommendedEnv: 'both',
+    defaultSurfaceColor: '#1D5E57',
+    defaultApronColor: '#252C38',
+    defaultPaintColor: '#1686C9',
+    roughness: 0.58,
   },
   {
     id: 'modular_tile',
@@ -193,11 +569,47 @@ export const SURFACE_PRESETS: Array<{
     defaultPaintColor: '#F07827',
     roughness: 0.88,
   },
+  {
+    id: 'synthetic_turf',
+    label: 'FIFA-Grade Synthetic Turf (50 mm)',
+    recommendedEnv: 'outdoor',
+    defaultSurfaceColor: '#2B7A3E',
+    defaultApronColor: '#232C28',
+    defaultPaintColor: '#246834',
+    roughness: 0.9,
+  },
+  {
+    id: 'natural_grass',
+    label: 'Natural Sports Turf Grass',
+    recommendedEnv: 'outdoor',
+    defaultSurfaceColor: '#358544',
+    defaultApronColor: '#2B382C',
+    defaultPaintColor: '#2E763B',
+    roughness: 0.94,
+  },
+  {
+    id: 'clay_red',
+    label: 'Crushed Brick Red Clay',
+    recommendedEnv: 'outdoor',
+    defaultSurfaceColor: '#A84B2E',
+    defaultApronColor: '#6D3725',
+    defaultPaintColor: '#984127',
+    roughness: 0.92,
+  },
+  {
+    id: 'beach_sand',
+    label: 'Washed Silica Beach Sand',
+    recommendedEnv: 'outdoor',
+    defaultSurfaceColor: '#DFC496',
+    defaultApronColor: '#3A3E46',
+    defaultPaintColor: '#CBB082',
+    roughness: 0.96,
+  },
 ];
 
 export function defaultEnvironmentSettings(env: CourtEnvironment): EnvironmentSettings {
   return {
-    lightingMode: env === 'indoor' ? 'daylight' : 'daylight',
+    lightingMode: 'daylight',
     shadowsEnabled: true,
     surroundings: env === 'indoor' ? 'arena' : 'park',
     renderMode: 'realistic',
@@ -205,17 +617,27 @@ export function defaultEnvironmentSettings(env: CourtEnvironment): EnvironmentSe
 }
 
 export function defaultCameraSettings(lengthM: number, widthM: number): CameraSettings {
-  const span = Math.max(lengthM, widthM);
+  const diag = Math.hypot(lengthM, widthM);
+  const span = Math.max(lengthM, widthM, diag * 0.86);
   return {
     preset: 'perspective',
     projection: 'perspective',
-    position: [span * 0.68, span * 0.46, span * 0.74],
+    position: [span * 0.66, span * 0.44, span * 0.72],
     target: [0, 0.6, 0],
-    zoom: 24,
+    zoom: Math.max(6, Math.min(28, 700 / Math.max(20, span))),
   };
 }
 
-export function defaultEngineeringAssumptions(env: CourtEnvironment): EngineeringAssumptions {
+export function defaultEngineeringAssumptions(
+  env: CourtEnvironment,
+  groundSystem: GroundSystemType = 'concrete_slab'
+): EngineeringAssumptions {
+  if (groundSystem === 'existing_slab') {
+    return { slabThicknessM: 0.1, subBaseThicknessM: 0.1, excavationDepthM: 0.15, wasteFactorPct: 5 };
+  }
+  if (groundSystem === 'synthetic_turf' || groundSystem === 'natural_grass') {
+    return { slabThicknessM: 0.12, subBaseThicknessM: 0.25, excavationDepthM: 0.4, wasteFactorPct: 7 };
+  }
   return {
     slabThicknessM: 0.15,
     subBaseThicknessM: env === 'outdoor' ? 0.2 : 0.15,
@@ -229,6 +651,129 @@ export function defaultCostConfig(): CostConfig {
     contingencyPct: 10,
     unitPriceOverrides: {},
   };
+}
+
+export function buildSportLayersForFacility(
+  standard: CourtStandard,
+  lengthM: number,
+  widthM: number,
+  materials: CourtMaterials,
+  selectedOverlaySports?: LayerSportType[]
+): SportMarkingLayer[] {
+  const spec = COURT_STANDARDS[standard];
+
+  if (standard === 'MULTISPORT_40X20' || (selectedOverlaySports && selectedOverlaySports.length > 1)) {
+    const sports = selectedOverlaySports && selectedOverlaySports.length > 0
+      ? selectedOverlaySports
+      : (['handball', 'basketball', 'volleyball'] as LayerSportType[]);
+
+    const palette: Record<LayerSportType, string> = {
+      handball: '#F2F4F7',
+      football: '#F2F4F7',
+      basketball: '#FACC15',
+      volleyball: '#38BDF8',
+      tennis: '#F97316',
+    };
+
+    return sports.map((sp, idx) => {
+      const presetMap: Record<LayerSportType, CourtStandard> = {
+        basketball: 'FIBA',
+        football: 'FOOTBALL_5',
+        volleyball: 'VOLLEYBALL_STD',
+        tennis: 'TENNIS_DOUBLES',
+        handball: 'HANDBALL_IHF',
+      };
+      const spSpec = COURT_STANDARDS[presetMap[sp]];
+      return {
+        id: `layer-${sp}-${idx + 1}`,
+        sport: sp,
+        presetId: presetMap[sp],
+        name: `${sp.charAt(0).toUpperCase() + sp.slice(1)} Markings`,
+        visible: true,
+        lengthM: Math.min(lengthM, spSpec.lengthM),
+        widthM: Math.min(widthM, spSpec.widthM),
+        lineColor: idx === 0 ? materials.lineColor : palette[sp],
+        paintColor: idx === 0 ? materials.paintColor : undefined,
+        lineWidthM: spSpec.lineWidthM,
+        offsetX: 0,
+        offsetZ: 0,
+        rotationDeg: 0,
+        isHalfCourt: false,
+      };
+    });
+  }
+
+  if (standard === 'MULTISPORT_30X18') {
+    return [
+      {
+        id: 'layer-football-1',
+        sport: 'football',
+        presetId: 'FOOTBALL_5',
+        name: '5-a-Side Football Markings',
+        visible: true,
+        lengthM,
+        widthM,
+        lineColor: materials.lineColor,
+        lineWidthM: 0.06,
+        offsetX: 0,
+        offsetZ: 0,
+        rotationDeg: 0,
+      },
+      {
+        id: 'layer-basketball-2',
+        sport: 'basketball',
+        presetId: 'FIBA',
+        name: 'Basketball Markings',
+        visible: true,
+        lengthM: Math.min(lengthM - 2, 28),
+        widthM: Math.min(widthM - 2, 15),
+        lineColor: '#FACC15',
+        paintColor: materials.paintColor,
+        lineWidthM: 0.05,
+        offsetX: 0,
+        offsetZ: 0,
+        rotationDeg: 0,
+      },
+      {
+        id: 'layer-volleyball-3',
+        sport: 'volleyball',
+        presetId: 'VOLLEYBALL_STD',
+        name: 'Volleyball Center Overlay',
+        visible: true,
+        lengthM: 18,
+        widthM: 9,
+        lineColor: '#38BDF8',
+        lineWidthM: 0.05,
+        offsetX: 0,
+        offsetZ: 0,
+        rotationDeg: 0,
+      },
+    ];
+  }
+
+  const singleSport: LayerSportType =
+    selectedOverlaySports && selectedOverlaySports.length === 1
+      ? selectedOverlaySports[0]
+      : spec.layerSport;
+
+  return [
+    {
+      id: `layer-${singleSport}-1`,
+      sport: singleSport,
+      presetId: standard,
+      name: `${spec.shortLabel} Primary Markings`,
+      visible: true,
+      lengthM,
+      widthM,
+      lineColor: materials.lineColor,
+      paintColor: materials.paintColor,
+      lineWidthM: spec.lineWidthM,
+      offsetX: 0,
+      offsetZ: 0,
+      rotationDeg: 0,
+      isHalfCourt: spec.isHalfCourt,
+    },
+  ];
 }
 
 export function buildCourtMarkingObjects(
@@ -290,15 +835,19 @@ export function buildDefaultObjects(
   dimensions: CourtDimensions,
   environment: CourtEnvironment,
   template: ProjectTemplate,
-  materials: CourtMaterials
+  materials: CourtMaterials,
+  standard: CourtStandard = 'FIBA',
+  sportLayers?: SportMarkingLayer[]
 ): SceneObject[] {
   const halfLen = dimensions.lengthM / 2;
   const halfWid = dimensions.widthM / 2;
+  const spec = COURT_STANDARDS[standard] ?? COURT_STANDARDS.FIBA;
+  const sport = spec.sport;
 
   const baseObjects: SceneObject[] = [
     {
       id: 'obj-slab',
-      name: 'Court Slab (Safety Clearance)',
+      name: 'Site Slab / Sub-Base Envelope',
       type: 'court_slab',
       visible: true,
       locked: true,
@@ -323,53 +872,332 @@ export function buildDefaultObjects(
     return baseObjects;
   }
 
-  const markingObjects = buildCourtMarkingObjects(dimensions, materials);
+  const objects: SceneObject[] = [...baseObjects];
 
-  const hoopOffset = 0.85;
-  const supportStyle = environment === 'indoor' ? 'hydraulic_boom' : 'gooseneck_post';
-  const leftHoop: SceneObject = {
-    id: 'obj-hoop-west',
-    name: dimensions.isHalfCourt ? 'Primary Hoop & Support' : 'West Hoop & Support',
-    type: 'hoop_assembly',
-    visible: true,
-    locked: false,
-    position: [-(halfLen + hoopOffset), 0, 0],
-    rotationY: 0,
-    color: '#202630',
-    secondaryColor: '#F07827',
-    metadata: {
-      rimHeightM: 3.05,
-      extensionArmM: 2.05,
-      backboardType: environment === 'indoor' ? 'tempered_glass' : 'frosted_acrylic',
-      supportStyle,
-    },
-  };
-
-  const objects: SceneObject[] = [...baseObjects, ...markingObjects, leftHoop];
-
-  if (!dimensions.isHalfCourt) {
+  // Keep legacy marking SceneObjects for pure basketball backward compatibility
+  if (sport === 'basketball') {
+    objects.push(...buildCourtMarkingObjects(dimensions, materials));
+    const hoopOffset = Math.max(0.65, 2.05 - spec.backboardFromBaselineM);
+    const supportStyle = environment === 'indoor' ? 'hydraulic_boom' : 'gooseneck_post';
     objects.push({
-      id: 'obj-hoop-east',
-      name: 'East Hoop & Support',
+      id: 'obj-hoop-west',
+      name: dimensions.isHalfCourt ? 'Primary Hoop & Support' : 'West Hoop & Support',
       type: 'hoop_assembly',
       visible: true,
       locked: false,
-      position: [halfLen + hoopOffset, 0, 0],
-      rotationY: Math.PI,
+      position: [-(halfLen + hoopOffset), 0, 0],
+      rotationY: 0,
       color: '#202630',
       secondaryColor: '#F07827',
       metadata: {
-        rimHeightM: 3.05,
+        rimHeightM: spec.rimHeightM,
         extensionArmM: 2.05,
         backboardType: environment === 'indoor' ? 'tempered_glass' : 'frosted_acrylic',
         supportStyle,
       },
     });
-  }
-
-  if (environment === 'indoor') {
+    if (!dimensions.isHalfCourt) {
+      objects.push({
+        id: 'obj-hoop-east',
+        name: 'East Hoop & Support',
+        type: 'hoop_assembly',
+        visible: true,
+        locked: false,
+        position: [halfLen + hoopOffset, 0, 0],
+        rotationY: Math.PI,
+        color: '#202630',
+        secondaryColor: '#F07827',
+        metadata: {
+          rimHeightM: spec.rimHeightM,
+          extensionArmM: 2.05,
+          backboardType: environment === 'indoor' ? 'tempered_glass' : 'frosted_acrylic',
+          supportStyle,
+        },
+      });
+    }
+  } else if (sport === 'football') {
+    const is11 = standard === 'FOOTBALL_11';
+    const is7 = standard === 'FOOTBALL_7';
+    const goalW = is11 ? 7.32 : is7 ? 6.0 : 3.0;
+    const goalH = is11 ? 2.44 : is7 ? 2.1 : 2.0;
+    const goalD = is11 ? 2.0 : 1.4;
     objects.push(
       {
+        id: 'obj-goal-west',
+        name: 'West Football Goal',
+        type: 'football_goal',
+        visible: true,
+        locked: false,
+        position: [-halfLen, 0, 0],
+        rotationY: 0,
+        color: '#F2F4F7',
+        secondaryColor: '#D1D5DB',
+        metadata: { goalWidthM: goalW, goalHeightM: goalH, goalDepthM: goalD },
+      },
+      {
+        id: 'obj-goal-east',
+        name: 'East Football Goal',
+        type: 'football_goal',
+        visible: true,
+        locked: false,
+        position: [halfLen, 0, 0],
+        rotationY: Math.PI,
+        color: '#F2F4F7',
+        secondaryColor: '#D1D5DB',
+        metadata: { goalWidthM: goalW, goalHeightM: goalH, goalDepthM: goalD },
+      }
+    );
+    if (dimensions.lengthM > 45) {
+      // Corner flags & team dugouts
+      [
+        ['nw', -halfLen, -halfWid],
+        ['sw', -halfLen, halfWid],
+        ['ne', halfLen, -halfWid],
+        ['se', halfLen, halfWid],
+      ].forEach(([tag, cx, cz]) => {
+        objects.push({
+          id: `obj-flag-${tag}`,
+          name: `Corner Flag ${String(tag).toUpperCase()}`,
+          type: 'corner_flag',
+          visible: true,
+          locked: false,
+          position: [Number(cx), 0, Number(cz)],
+          rotationY: 0,
+          color: '#F2F4F7',
+          secondaryColor: '#F07827',
+        });
+      });
+      objects.push(
+        {
+          id: 'obj-dugout-home',
+          name: 'Home Team Dugout Shelter',
+          type: 'dugout_shelter',
+          visible: true,
+          locked: false,
+          position: [-8, 0, halfWid + 2.2],
+          rotationY: Math.PI,
+          color: '#202630',
+          secondaryColor: '#1686C9',
+        },
+        {
+          id: 'obj-dugout-away',
+          name: 'Visitor Team Dugout Shelter',
+          type: 'dugout_shelter',
+          visible: true,
+          locked: false,
+          position: [8, 0, halfWid + 2.2],
+          rotationY: Math.PI,
+          color: '#202630',
+          secondaryColor: '#F07827',
+        }
+      );
+    }
+  } else if (sport === 'handball') {
+    objects.push(
+      {
+        id: 'obj-hand-goal-west',
+        name: 'West Handball Goal (3×2 m)',
+        type: 'handball_goal',
+        visible: true,
+        locked: false,
+        position: [-halfLen, 0, 0],
+        rotationY: 0,
+        color: '#DC2626',
+        secondaryColor: '#F2F4F7',
+        metadata: { goalWidthM: 3.0, goalHeightM: 2.0, goalDepthM: 1.0 },
+      },
+      {
+        id: 'obj-hand-goal-east',
+        name: 'East Handball Goal (3×2 m)',
+        type: 'handball_goal',
+        visible: true,
+        locked: false,
+        position: [halfLen, 0, 0],
+        rotationY: Math.PI,
+        color: '#DC2626',
+        secondaryColor: '#F2F4F7',
+        metadata: { goalWidthM: 3.0, goalHeightM: 2.0, goalDepthM: 1.0 },
+      }
+    );
+  } else if (sport === 'volleyball') {
+    objects.push({
+      id: 'obj-volley-net',
+      name: 'Tensioned Volleyball Net System',
+      type: 'volleyball_net',
+      visible: true,
+      locked: false,
+      position: [0, 0, 0],
+      rotationY: 0,
+      color: '#1686C9',
+      secondaryColor: '#F2F4F7',
+      metadata: {
+        netHeightM: 2.43,
+        netWidthM: dimensions.widthM + 1.0,
+      },
+    });
+  } else if (sport === 'tennis') {
+    objects.push(
+      {
+        id: 'obj-tennis-net',
+        name: 'ITF Tennis Net & Posts',
+        type: 'tennis_net',
+        visible: true,
+        locked: false,
+        position: [0, 0, 0],
+        rotationY: 0,
+        color: '#1A2029',
+        secondaryColor: '#F2F4F7',
+        metadata: {
+          netHeightM: 1.07,
+          netWidthM: dimensions.widthM + 1.82,
+        },
+      },
+      {
+        id: 'obj-fence-north',
+        name: 'North Perimeter Fence (3.5 m)',
+        type: 'perimeter_fence',
+        visible: true,
+        locked: false,
+        position: [0, 0, -(halfWid + dimensions.apronM + 0.08)],
+        rotationY: 0,
+        color: '#1F3D2F',
+        metadata: { fenceLengthM: dimensions.lengthM + dimensions.apronM * 2, fenceHeightM: 3.5 },
+      },
+      {
+        id: 'obj-fence-south',
+        name: 'South Perimeter Fence (3.5 m)',
+        type: 'perimeter_fence',
+        visible: true,
+        locked: false,
+        position: [0, 0, halfWid + dimensions.apronM + 0.08],
+        rotationY: 0,
+        color: '#1F3D2F',
+        metadata: { fenceLengthM: dimensions.lengthM + dimensions.apronM * 2, fenceHeightM: 3.5 },
+      }
+    );
+  } else if (sport === 'multisport' || sport === 'custom') {
+    const layers = sportLayers ?? [];
+    const hasBasket = layers.some((l) => l.sport === 'basketball') || sport === 'multisport';
+    const hasGoalSport = layers.some((l) => l.sport === 'football' || l.sport === 'handball') || sport === 'multisport';
+    const hasVolley = layers.some((l) => l.sport === 'volleyball');
+    const hasTennis = layers.some((l) => l.sport === 'tennis');
+
+    if (hasGoalSport && hasBasket) {
+      objects.push(
+        {
+          id: 'obj-combo-west',
+          name: 'West Multi-Sport Combo Goal (Foot/Hand + Basket)',
+          type: 'multisport_combo_goal',
+          visible: true,
+          locked: false,
+          position: [-halfLen, 0, 0],
+          rotationY: 0,
+          color: '#202630',
+          secondaryColor: '#F07827',
+          metadata: { goalWidthM: 3.0, goalHeightM: 2.0, rimHeightM: 3.05 },
+        },
+        {
+          id: 'obj-combo-east',
+          name: 'East Multi-Sport Combo Goal (Foot/Hand + Basket)',
+          type: 'multisport_combo_goal',
+          visible: true,
+          locked: false,
+          position: [halfLen, 0, 0],
+          rotationY: Math.PI,
+          color: '#202630',
+          secondaryColor: '#F07827',
+          metadata: { goalWidthM: 3.0, goalHeightM: 2.0, rimHeightM: 3.05 },
+        }
+      );
+    } else if (hasBasket) {
+      objects.push(
+        {
+          id: 'obj-hoop-west',
+          name: 'West Hoop & Support',
+          type: 'hoop_assembly',
+          visible: true,
+          locked: false,
+          position: [-(halfLen + 0.85), 0, 0],
+          rotationY: 0,
+          color: '#202630',
+          secondaryColor: '#F07827',
+          metadata: { rimHeightM: 3.05, extensionArmM: 2.05, backboardType: 'solid_steel', supportStyle: 'gooseneck_post' },
+        },
+        {
+          id: 'obj-hoop-east',
+          name: 'East Hoop & Support',
+          type: 'hoop_assembly',
+          visible: true,
+          locked: false,
+          position: [halfLen + 0.85, 0, 0],
+          rotationY: Math.PI,
+          color: '#202630',
+          secondaryColor: '#F07827',
+          metadata: { rimHeightM: 3.05, extensionArmM: 2.05, backboardType: 'solid_steel', supportStyle: 'gooseneck_post' },
+        }
+      );
+    } else if (hasGoalSport) {
+      objects.push(
+        {
+          id: 'obj-hand-goal-west',
+          name: 'West Goal (3×2 m)',
+          type: 'handball_goal',
+          visible: true,
+          locked: false,
+          position: [-halfLen, 0, 0],
+          rotationY: 0,
+          color: '#202630',
+          secondaryColor: '#F2F4F7',
+          metadata: { goalWidthM: 3.0, goalHeightM: 2.0, goalDepthM: 1.0 },
+        },
+        {
+          id: 'obj-hand-goal-east',
+          name: 'East Goal (3×2 m)',
+          type: 'handball_goal',
+          visible: true,
+          locked: false,
+          position: [halfLen, 0, 0],
+          rotationY: Math.PI,
+          color: '#202630',
+          secondaryColor: '#F2F4F7',
+          metadata: { goalWidthM: 3.0, goalHeightM: 2.0, goalDepthM: 1.0 },
+        }
+      );
+    }
+
+    if (hasVolley) {
+      objects.push({
+        id: 'obj-volley-net',
+        name: 'Removable Volleyball Net Posts',
+        type: 'volleyball_net',
+        visible: true,
+        locked: false,
+        position: [0, 0, 0],
+        rotationY: 0,
+        color: '#1686C9',
+        secondaryColor: '#F2F4F7',
+        metadata: { netHeightM: 2.43, netWidthM: 10.0 },
+      });
+    } else if (hasTennis) {
+      objects.push({
+        id: 'obj-tennis-net',
+        name: 'Removable Tennis Net',
+        type: 'tennis_net',
+        visible: true,
+        locked: false,
+        position: [0, 0, 0],
+        rotationY: 0,
+        color: '#1A2029',
+        secondaryColor: '#F2F4F7',
+        metadata: { netHeightM: 1.07, netWidthM: 12.8 },
+      });
+    }
+  }
+
+  // Site fixtures (indoor benches/scorer vs outdoor floodlights/fencing)
+  if (environment === 'indoor') {
+    if (sport === 'basketball' || sport === 'handball') {
+      objects.push({
         id: 'obj-scorer-table',
         name: "Scorer's Table & Shot Console",
         type: 'scorer_table',
@@ -379,14 +1207,16 @@ export function buildDefaultObjects(
         rotationY: Math.PI,
         color: '#202630',
         secondaryColor: '#F07827',
-      },
+      });
+    }
+    objects.push(
       {
         id: 'obj-bench-home',
         name: 'Home Team Bench',
         type: 'player_bench',
         visible: true,
         locked: false,
-        position: [-5.5, 0, halfWid + 1.25],
+        position: [-Math.min(5.5, halfLen * 0.4), 0, halfWid + 1.25],
         rotationY: Math.PI,
         color: '#262E3B',
         secondaryColor: '#1686C9',
@@ -397,7 +1227,7 @@ export function buildDefaultObjects(
         type: 'player_bench',
         visible: true,
         locked: false,
-        position: [5.5, 0, halfWid + 1.25],
+        position: [Math.min(5.5, halfLen * 0.4), 0, halfWid + 1.25],
         rotationY: Math.PI,
         color: '#262E3B',
         secondaryColor: '#F07827',
@@ -415,6 +1245,9 @@ export function buildDefaultObjects(
       }
     );
   } else {
+    const mastX = halfLen + dimensions.apronM - 0.5;
+    const mastZ = halfWid + dimensions.apronM - 0.5;
+    const poleH = dimensions.lengthM >= 55 ? 12.0 : 6.0;
     objects.push(
       {
         id: 'obj-light-nw',
@@ -422,10 +1255,11 @@ export function buildDefaultObjects(
         type: 'lighting_mast',
         visible: true,
         locked: false,
-        position: [-(halfLen + dimensions.apronM - 0.35), 0, -(halfWid + dimensions.apronM - 0.35)],
+        position: [-mastX, 0, -mastZ],
         rotationY: Math.PI * 0.25,
         color: '#2A313D',
         secondaryColor: '#F2F4F7',
+        metadata: { poleHeightM: poleH },
       },
       {
         id: 'obj-light-ne',
@@ -433,12 +1267,43 @@ export function buildDefaultObjects(
         type: 'lighting_mast',
         visible: true,
         locked: false,
-        position: [halfLen + dimensions.apronM - 0.35, 0, -(halfWid + dimensions.apronM - 0.35)],
+        position: [mastX, 0, -mastZ],
         rotationY: -Math.PI * 0.25,
         color: '#2A313D',
         secondaryColor: '#F2F4F7',
-      },
-      {
+        metadata: { poleHeightM: poleH },
+      }
+    );
+    if (dimensions.lengthM >= 45) {
+      objects.push(
+        {
+          id: 'obj-light-sw',
+          name: 'SW Floodlight Mast',
+          type: 'lighting_mast',
+          visible: true,
+          locked: false,
+          position: [-mastX, 0, mastZ],
+          rotationY: Math.PI * 0.75,
+          color: '#2A313D',
+          secondaryColor: '#F2F4F7',
+          metadata: { poleHeightM: poleH },
+        },
+        {
+          id: 'obj-light-se',
+          name: 'SE Floodlight Mast',
+          type: 'lighting_mast',
+          visible: true,
+          locked: false,
+          position: [mastX, 0, mastZ],
+          rotationY: -Math.PI * 0.75,
+          color: '#2A313D',
+          secondaryColor: '#F2F4F7',
+          metadata: { poleHeightM: poleH },
+        }
+      );
+    }
+    if (sport !== 'tennis') {
+      objects.push({
         id: 'obj-fence-north',
         name: 'North Ball-Stop Fence',
         type: 'perimeter_fence',
@@ -447,9 +1312,12 @@ export function buildDefaultObjects(
         position: [0, 0, -(halfWid + dimensions.apronM + 0.08)],
         rotationY: 0,
         color: '#2C3440',
-        metadata: { fenceLengthM: (dimensions.lengthM + dimensions.apronM * 2) * 0.72 },
-      }
-    );
+        metadata: {
+          fenceLengthM: (dimensions.lengthM + dimensions.apronM * 2) * 0.72,
+          fenceHeightM: sport === 'football' ? 5.0 : 3.2,
+        },
+      });
+    }
   }
 
   return objects;
@@ -460,18 +1328,45 @@ function clampNumber(val: unknown, min: number, max: number, fallback: number): 
   return Math.min(max, Math.max(min, num));
 }
 
+function sanitizeOverrides(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const clean: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
+      clean[k] = Math.round(v);
+    }
+  }
+  return clean;
+}
+
 export function normalizeProject(project: CourtProject): CourtProject {
   const validStandard: CourtStandard = COURT_STANDARDS[project.standard]
     ? project.standard
     : 'FIBA';
+  const spec = COURT_STANDARDS[validStandard];
   const validEnv: CourtEnvironment = project.environment === 'indoor' ? 'indoor' : 'outdoor';
   const validUnit: MeasurementUnit = project.unit === 'ft' ? 'ft' : 'm';
 
   const dims = project.dimensions ?? ({} as CourtDimensions);
-  const lengthM = clampNumber(dims.lengthM, 8, 42, COURT_STANDARDS[validStandard].lengthM);
-  const widthM = clampNumber(dims.widthM, 6, 25, COURT_STANDARDS[validStandard].widthM);
-  const apronM = clampNumber(dims.apronM, 0.5, 6, COURT_STANDARDS[validStandard].defaultApronM);
+  const lengthM = clampNumber(dims.lengthM, 8, 135, spec.lengthM);
+  const widthM = clampNumber(dims.widthM, 6, 95, spec.widthM);
+  const apronM = clampNumber(dims.apronM, 0.5, 12, spec.defaultApronM);
   const orientationDeg = clampNumber(dims.orientationDeg, 0, 359, 0);
+
+  const groundSystem: GroundSystemType = project.groundSystem ?? (
+    project.materials?.surfaceType === 'hardwood_maple' || project.materials?.surfaceType === 'hardwood_dark'
+      ? 'sprung_wood'
+      : project.materials?.surfaceType === 'synthetic_turf'
+      ? 'synthetic_turf'
+      : project.materials?.surfaceType === 'natural_grass'
+      ? 'natural_grass'
+      : project.materials?.surfaceType === 'clay_red'
+      ? 'clay_court'
+      : project.materials?.surfaceType === 'beach_sand'
+      ? 'sand_court'
+      : spec.defaultGroundSystem
+  );
 
   const rawObjects = Array.isArray(project.objects) ? project.objects : [];
   let nextObjects: SceneObject[] = rawObjects
@@ -484,9 +1379,9 @@ export function normalizeProject(project: CourtProject): CourtProject {
         visible: typeof o.visible === 'boolean' ? o.visible : true,
         locked: typeof o.locked === 'boolean' ? o.locked : false,
         position: [
-          clampNumber(pos[0], -80, 80, 0),
-          clampNumber(pos[1], -10, 30, 0),
-          clampNumber(pos[2], -80, 80, 0),
+          clampNumber(pos[0], -120, 120, 0),
+          clampNumber(pos[1], -10, 35, 0),
+          clampNumber(pos[2], -120, 120, 0),
         ] as [number, number, number],
         rotationY: typeof o.rotationY === 'number' && Number.isFinite(o.rotationY) ? o.rotationY : 0,
         color: typeof o.color === 'string' && o.color ? o.color : '#202630',
@@ -494,7 +1389,7 @@ export function normalizeProject(project: CourtProject): CourtProject {
     });
 
   const mats: CourtMaterials = {
-    surfaceType: project.materials?.surfaceType ?? (validEnv === 'indoor' ? 'hardwood_maple' : 'acrylic_pro'),
+    surfaceType: project.materials?.surfaceType ?? spec.defaultSurfaceType ?? (validEnv === 'indoor' ? 'hardwood_maple' : 'acrylic_pro'),
     surfaceColor: project.materials?.surfaceColor ?? (validEnv === 'indoor' ? '#D4A36A' : '#1F4B7A'),
     apronColor: project.materials?.apronColor ?? '#1A2029',
     paintColor: project.materials?.paintColor ?? '#1686C9',
@@ -523,17 +1418,44 @@ export function normalizeProject(project: CourtProject): CourtProject {
     nextObjects.splice(slabIdx >= 0 ? slabIdx + 1 : 0, 0, ...markings);
   }
 
-  const rawAssumptions = project.engineeringAssumptions ?? defaultEngineeringAssumptions(validEnv);
+  const rawLayers = Array.isArray(project.sportLayers) ? project.sportLayers : [];
+  const validLayerSports: LayerSportType[] = ['basketball', 'football', 'volleyball', 'tennis', 'handball'];
+  const normalizedLayers: SportMarkingLayer[] =
+    rawLayers.length > 0
+      ? rawLayers
+          .filter((l) => l && typeof l.id === 'string' && validLayerSports.includes(l.sport))
+          .map((l) => ({
+            id: l.id,
+            sport: l.sport,
+            presetId: COURT_STANDARDS[l.presetId] ? l.presetId : validStandard,
+            name: typeof l.name === 'string' && l.name.trim() ? l.name : `${l.sport} Layer`,
+            visible: typeof l.visible === 'boolean' ? l.visible : true,
+            lengthM: clampNumber(l.lengthM, 6, 130, lengthM),
+            widthM: clampNumber(l.widthM, 4, 90, widthM),
+            lineColor: typeof l.lineColor === 'string' && l.lineColor ? l.lineColor : mats.lineColor,
+            paintColor: typeof l.paintColor === 'string' ? l.paintColor : undefined,
+            lineWidthM: clampNumber(l.lineWidthM, 0.03, 0.2, 0.05),
+            offsetX: clampNumber(l.offsetX, -60, 60, 0),
+            offsetZ: clampNumber(l.offsetZ, -60, 60, 0),
+            rotationDeg: clampNumber(l.rotationDeg, -180, 180, 0),
+            isHalfCourt: Boolean(l.isHalfCourt),
+          }))
+      : buildSportLayersForFacility(validStandard, lengthM, widthM, mats);
+
+  const rawAssumptions = project.engineeringAssumptions ?? defaultEngineeringAssumptions(validEnv, groundSystem);
   const rawCost = project.costConfig ?? defaultCostConfig();
 
   return {
     ...project,
+    schemaVersion: 2,
     id: typeof project.id === 'string' && project.id.trim() ? project.id : `proj-${Date.now().toString(36)}`,
-    name: typeof project.name === 'string' && project.name.trim() ? project.name : 'Untitled Court Project',
+    name: typeof project.name === 'string' && project.name.trim() ? project.name : 'Untitled Facility Project',
     client: typeof project.client === 'string' ? project.client : 'Private Architectural Study',
     location: typeof project.location === 'string' ? project.location : 'Site Unassigned',
     notes: typeof project.notes === 'string' ? project.notes : '',
+    sport: project.sport ?? spec.sport,
     standard: validStandard,
+    groundSystem,
     environment: validEnv,
     template: project.template === 'blank' ? 'blank' : 'standard',
     status: project.status ?? 'Draft',
@@ -542,11 +1464,12 @@ export function normalizeProject(project: CourtProject): CourtProject {
       lengthM,
       widthM,
       apronM,
-      isHalfCourt: typeof dims.isHalfCourt === 'boolean' ? dims.isHalfCourt : COURT_STANDARDS[validStandard].isHalfCourt,
+      isHalfCourt: typeof dims.isHalfCourt === 'boolean' ? dims.isHalfCourt : spec.isHalfCourt,
       orientationDeg,
       showSafetyZone: dims.showSafetyZone ?? true,
     },
     materials: mats,
+    sportLayers: normalizedLayers,
     environmentSettings: {
       ...defaultEnvironmentSettings(validEnv),
       ...(project.environmentSettings ?? {}),
@@ -560,10 +1483,7 @@ export function normalizeProject(project: CourtProject): CourtProject {
     },
     costConfig: {
       contingencyPct: clampNumber(rawCost.contingencyPct, 0, 30, 10),
-      unitPriceOverrides:
-        rawCost.unitPriceOverrides && typeof rawCost.unitPriceOverrides === 'object'
-          ? rawCost.unitPriceOverrides
-          : {},
+      unitPriceOverrides: sanitizeOverrides(rawCost.unitPriceOverrides),
     },
     objects: nextObjects,
     createdAt: project.createdAt || new Date().toISOString(),
@@ -579,6 +1499,8 @@ export function createInitialProjects(): CourtProject[] {
   const fibaSpec = COURT_STANDARDS.FIBA;
   const nbaSpec = COURT_STANDARDS.NBA;
   const threeXSpec = COURT_STANDARDS.FIBA_3X3;
+  const multiSpec = COURT_STANDARDS.MULTISPORT_40X20;
+  const footSpec = COURT_STANDARDS.FOOTBALL_11;
 
   const p1Dim: CourtDimensions = {
     lengthM: fibaSpec.lengthM,
@@ -628,6 +1550,40 @@ export function createInitialProjects(): CourtProject[] {
     lineColor: '#F2F4F7',
   };
 
+  const p4Dim: CourtDimensions = {
+    lengthM: multiSpec.lengthM,
+    widthM: multiSpec.widthM,
+    apronM: 2.0,
+    isHalfCourt: false,
+    orientationDeg: 0,
+    showSafetyZone: true,
+  };
+  const p4Mat: CourtMaterials = {
+    surfaceType: 'pu_multisport',
+    surfaceColor: '#1D5E57',
+    apronColor: '#252C38',
+    paintColor: '#1686C9',
+    lineColor: '#F2F4F7',
+  };
+  const p4Layers = buildSportLayersForFacility('MULTISPORT_40X20', p4Dim.lengthM, p4Dim.widthM, p4Mat);
+
+  const p5Dim: CourtDimensions = {
+    lengthM: footSpec.lengthM,
+    widthM: footSpec.widthM,
+    apronM: 5.0,
+    isHalfCourt: false,
+    orientationDeg: 0,
+    showSafetyZone: true,
+  };
+  const p5Mat: CourtMaterials = {
+    surfaceType: 'synthetic_turf',
+    surfaceColor: '#2B7A3E',
+    apronColor: '#232C28',
+    paintColor: '#246834',
+    lineColor: '#F2F4F7',
+  };
+  const p5Layers = buildSportLayersForFacility('FOOTBALL_11', p5Dim.lengthM, p5Dim.widthM, p5Mat);
+
   const projects: CourtProject[] = [
     {
       id: 'proj-meridian-arena',
@@ -635,7 +1591,9 @@ export function createInitialProjects(): CourtProject[] {
       client: 'Meridian Municipal Sports Authority',
       location: 'Portland, OR',
       notes: 'Sprung maple subfloor system (28×15 m playing area, 2.0 m safety clearance apron).',
+      sport: 'basketball',
       standard: 'FIBA',
+      groundSystem: 'sprung_wood',
       environment: 'indoor',
       template: 'standard',
       status: 'Specification Ready',
@@ -644,10 +1602,56 @@ export function createInitialProjects(): CourtProject[] {
       materials: p1Mat,
       environmentSettings: defaultEnvironmentSettings('indoor'),
       cameraSettings: defaultCameraSettings(p1Dim.lengthM, p1Dim.widthM),
-      objects: buildDefaultObjects(p1Dim, 'indoor', 'standard', p1Mat),
+      objects: buildDefaultObjects(p1Dim, 'indoor', 'standard', p1Mat, 'FIBA'),
       createdAt: hoursAgo(96),
       updatedAt: hoursAgo(2),
       lastOpenedAt: hoursAgo(2),
+    },
+    {
+      id: 'proj-cotonou-multisport',
+      name: 'Cotonou Multi-Sport City Plateau',
+      client: 'Direction des Infrastructures Sportives',
+      location: 'Cotonou, Littoral',
+      notes: '40×20 m seamless PU plateau combining Handball, FIBA Basketball & Volleyball with combo goals.',
+      sport: 'multisport',
+      standard: 'MULTISPORT_40X20',
+      groundSystem: 'concrete_slab',
+      environment: 'outdoor',
+      template: 'standard',
+      status: 'Specification Ready',
+      unit: 'm',
+      dimensions: p4Dim,
+      materials: p4Mat,
+      sportLayers: p4Layers,
+      environmentSettings: defaultEnvironmentSettings('outdoor'),
+      cameraSettings: defaultCameraSettings(p4Dim.lengthM, p4Dim.widthM),
+      objects: buildDefaultObjects(p4Dim, 'outdoor', 'standard', p4Mat, 'MULTISPORT_40X20', p4Layers),
+      createdAt: hoursAgo(72),
+      updatedAt: hoursAgo(6),
+      lastOpenedAt: hoursAgo(6),
+    },
+    {
+      id: 'proj-atlantic-football',
+      name: 'Atlantic Pitch 11v11 Complex',
+      client: 'Regional Football Federation',
+      location: 'Ouidah, Atlantique',
+      notes: 'FIFA 105×68 m synthetic turf pitch on draining crushed aggregate + 12 m floodlight masts.',
+      sport: 'football',
+      standard: 'FOOTBALL_11',
+      groundSystem: 'synthetic_turf',
+      environment: 'outdoor',
+      template: 'standard',
+      status: 'In Review',
+      unit: 'm',
+      dimensions: p5Dim,
+      materials: p5Mat,
+      sportLayers: p5Layers,
+      environmentSettings: defaultEnvironmentSettings('outdoor'),
+      cameraSettings: defaultCameraSettings(p5Dim.lengthM, p5Dim.widthM),
+      objects: buildDefaultObjects(p5Dim, 'outdoor', 'standard', p5Mat, 'FOOTBALL_11', p5Layers),
+      createdAt: hoursAgo(120),
+      updatedAt: hoursAgo(10),
+      lastOpenedAt: hoursAgo(10),
     },
     {
       id: 'proj-harborfront-park',
@@ -655,7 +1659,9 @@ export function createInitialProjects(): CourtProject[] {
       client: 'Eastside Parks Department',
       location: 'Seattle, WA',
       notes: 'Post-tensioned concrete slab with 5-coat cushioned acrylic surfacing and 6 m LED masts.',
+      sport: 'basketball',
       standard: 'NBA',
+      groundSystem: 'concrete_slab',
       environment: 'outdoor',
       template: 'standard',
       status: 'In Review',
@@ -669,7 +1675,7 @@ export function createInitialProjects(): CourtProject[] {
         renderMode: 'realistic',
       },
       cameraSettings: defaultCameraSettings(p2Dim.lengthM, p2Dim.widthM),
-      objects: buildDefaultObjects(p2Dim, 'outdoor', 'standard', p2Mat),
+      objects: buildDefaultObjects(p2Dim, 'outdoor', 'standard', p2Mat, 'NBA'),
       createdAt: hoursAgo(140),
       updatedAt: hoursAgo(14),
       lastOpenedAt: hoursAgo(14),
@@ -680,7 +1686,9 @@ export function createInitialProjects(): CourtProject[] {
       client: 'Foundry Athletic Club',
       location: 'Chicago, IL',
       notes: 'Lightweight interlocking polymer tile deck engineered for structural rooftop drainage.',
+      sport: 'basketball',
       standard: 'FIBA_3X3',
+      groundSystem: 'existing_slab',
       environment: 'outdoor',
       template: 'standard',
       status: 'Draft',
@@ -694,7 +1702,7 @@ export function createInitialProjects(): CourtProject[] {
         renderMode: 'realistic',
       },
       cameraSettings: defaultCameraSettings(p3Dim.lengthM, p3Dim.widthM),
-      objects: buildDefaultObjects(p3Dim, 'outdoor', 'standard', p3Mat),
+      objects: buildDefaultObjects(p3Dim, 'outdoor', 'standard', p3Mat, 'FIBA_3X3'),
       createdAt: hoursAgo(48),
       updatedAt: hoursAgo(30),
       lastOpenedAt: hoursAgo(30),

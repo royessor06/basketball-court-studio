@@ -30,14 +30,17 @@ import {
   X,
 } from 'lucide-react';
 import {
+  buildSportLayersForFacility,
   COURT_STANDARDS,
   formatArea,
   formatLength,
+  GROUND_SYSTEM_PRESETS,
   metersToUnitValue,
   SURFACE_PRESETS,
   unitValueToMeters,
 } from '../constants/courtStandards';
 import { ErrorBoundary } from '../components/common/ErrorBoundary';
+import { resolveEffectiveSportLayers } from '../sports/markingPrimitives';
 import { useProjectStore } from '../store/useProjectStore';
 import { CourtViewport } from '../three/CourtScene';
 import {
@@ -47,6 +50,8 @@ import {
   CameraSettings,
   CourtEnvironment,
   CourtStandard,
+  GroundSystemType,
+  LayerSportType,
   LightingMode,
   ProjectStatus,
   RenderMode,
@@ -70,6 +75,10 @@ export const WorkspaceView: React.FC = () => {
     addSceneObject,
     duplicateSceneObject,
     removeSceneObject,
+    addSportLayer,
+    updateSportLayer,
+    removeSportLayer,
+    setGroundSystem,
     saveProjectSnapshot,
     restoreSavedSnapshot,
     updateProjectStatus,
@@ -361,29 +370,36 @@ export const WorkspaceView: React.FC = () => {
       {/* Add Equipment Palette */}
       <div className="p-3 border-b border-white/10">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9AA4B2] mb-2">
-          Add Court Equipment
+          Add Sports Equipment
         </div>
-        <div className="grid grid-cols-1 gap-1">
+        <div className="grid grid-cols-2 gap-1 max-h-[210px] overflow-y-auto pr-0.5">
           {(
             [
-              { type: 'hoop_assembly', label: 'Hoop Stanchion' },
+              { type: 'hoop_assembly', label: 'Basket Hoop' },
+              { type: 'football_goal', label: 'Football Goal' },
+              { type: 'handball_goal', label: 'Handball Goal' },
+              { type: 'volleyball_net', label: 'Volley Net' },
+              { type: 'tennis_net', label: 'Tennis Net' },
+              { type: 'multisport_combo_goal', label: 'Combo Goal' },
+              { type: 'dugout_shelter', label: 'Dugout Shelter' },
+              { type: 'corner_flag', label: 'Corner Flag' },
               { type: 'player_bench', label: 'Team Bench' },
-              { type: 'scorer_table', label: "Scorer's Table" },
-              { type: 'lighting_mast', label: 'LED Lighting Pole' },
-              { type: 'perimeter_fence', label: 'Perimeter Fence' },
+              { type: 'scorer_table', label: 'Scorer Table' },
+              { type: 'lighting_mast', label: 'Light Mast' },
+              { type: 'perimeter_fence', label: 'Fence Span' },
               { type: 'scoreboard', label: 'Scoreboard' },
-              { type: 'bleachers', label: 'Spectator Bleachers' },
-              { type: 'ball_rack', label: 'Ball Storage Rack' },
+              { type: 'bleachers', label: 'Bleachers' },
+              { type: 'ball_rack', label: 'Ball Rack' },
             ] as Array<{ type: SceneObjectType; label: string }>
           ).map((item) => (
             <button
               key={item.type}
               type="button"
               onClick={() => handleAddObject(item.type)}
-              className="w-full px-2.5 py-1.5 bg-[#202630] hover:bg-[#28303d] border border-white/8 rounded text-xs text-[#F2F4F7] flex items-center justify-between transition-colors cursor-pointer min-h-[34px]"
+              className="w-full px-2 py-1.5 bg-[#202630] hover:bg-[#28303d] border border-white/8 rounded text-[11px] text-[#F2F4F7] flex items-center justify-between gap-1 transition-colors cursor-pointer min-h-[32px]"
             >
-              <span>{item.label}</span>
-              <Plus className="w-3.5 h-3.5 text-[#F07827]" />
+              <span className="truncate">{item.label}</span>
+              <Plus className="w-3 h-3 text-[#F07827] shrink-0" />
             </button>
           ))}
         </div>
@@ -659,31 +675,313 @@ export const WorkspaceView: React.FC = () => {
                 </div>
               )}
 
-              {/* Perimeter Fence Span */}
-              {selectedObject.type === 'perimeter_fence' && (
+              {/* Goal Properties (Football & Handball) */}
+              {(selectedObject.type === 'football_goal' ||
+                selectedObject.type === 'handball_goal') && (
+                <div className="space-y-3 pt-3 border-t border-white/10">
+                  <div className="text-xs font-semibold text-[#F2F4F7]">
+                    Goal Frame Dimensions
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label htmlFor="goal-width" className="block text-[10px] text-[#9AA4B2] mb-1">
+                        Width (m)
+                      </label>
+                      <input
+                        id="goal-width"
+                        type="number"
+                        step="0.1"
+                        min="2.0"
+                        max="8.0"
+                        value={
+                          selectedObject.metadata?.goalWidthM ??
+                          (selectedObject.type === 'football_goal' ? 7.32 : 3.0)
+                        }
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!Number.isNaN(val)) {
+                            updateProjectObject(project.id, selectedObject.id, {
+                              metadata: {
+                                ...selectedObject.metadata,
+                                goalWidthM: Math.max(2.0, Math.min(8.0, val)),
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full px-2 py-1.5 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="goal-height" className="block text-[10px] text-[#9AA4B2] mb-1">
+                        Height (m)
+                      </label>
+                      <input
+                        id="goal-height"
+                        type="number"
+                        step="0.05"
+                        min="1.5"
+                        max="2.6"
+                        value={
+                          selectedObject.metadata?.goalHeightM ??
+                          (selectedObject.type === 'football_goal' ? 2.44 : 2.0)
+                        }
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!Number.isNaN(val)) {
+                            updateProjectObject(project.id, selectedObject.id, {
+                              metadata: {
+                                ...selectedObject.metadata,
+                                goalHeightM: Math.max(1.5, Math.min(2.6, val)),
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full px-2 py-1.5 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="goal-depth" className="block text-[10px] text-[#9AA4B2] mb-1">
+                        Depth (m)
+                      </label>
+                      <input
+                        id="goal-depth"
+                        type="number"
+                        step="0.1"
+                        min="0.8"
+                        max="2.5"
+                        value={
+                          selectedObject.metadata?.goalDepthM ??
+                          (selectedObject.type === 'football_goal' ? 2.0 : 1.0)
+                        }
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!Number.isNaN(val)) {
+                            updateProjectObject(project.id, selectedObject.id, {
+                              metadata: {
+                                ...selectedObject.metadata,
+                                goalDepthM: Math.max(0.8, Math.min(2.5, val)),
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full px-2 py-1.5 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Combo Goal Properties */}
+              {selectedObject.type === 'multisport_combo_goal' && (
+                <div className="space-y-3 pt-3 border-t border-white/10">
+                  <div className="text-xs font-semibold text-[#F2F4F7]">
+                    Multi-Sport Combo Goal
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label htmlFor="combo-goal-w" className="block text-[10px] text-[#9AA4B2] mb-1">
+                        Goal Width (m)
+                      </label>
+                      <input
+                        id="combo-goal-w"
+                        type="number"
+                        step="0.2"
+                        min="2.0"
+                        max="4.0"
+                        value={selectedObject.metadata?.goalWidthM ?? 3.0}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!Number.isNaN(val)) {
+                            updateProjectObject(project.id, selectedObject.id, {
+                              metadata: {
+                                ...selectedObject.metadata,
+                                goalWidthM: Math.max(2.0, Math.min(4.0, val)),
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full px-2 py-1.5 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="combo-rim-h" className="block text-[10px] text-[#9AA4B2] mb-1">
+                        Rim Height (m)
+                      </label>
+                      <input
+                        id="combo-rim-h"
+                        type="number"
+                        step="0.05"
+                        min="2.2"
+                        max="3.2"
+                        value={selectedObject.metadata?.rimHeightM ?? 3.05}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!Number.isNaN(val)) {
+                            updateProjectObject(project.id, selectedObject.id, {
+                              metadata: {
+                                ...selectedObject.metadata,
+                                rimHeightM: Math.max(2.2, Math.min(3.2, val)),
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full px-2 py-1.5 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Net Properties (Volleyball & Tennis) */}
+              {(selectedObject.type === 'volleyball_net' ||
+                selectedObject.type === 'tennis_net') && (
+                <div className="space-y-3 pt-3 border-t border-white/10">
+                  <div className="text-xs font-semibold text-[#F2F4F7]">
+                    Net &amp; Post Geometry
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label htmlFor="net-height" className="block text-[10px] text-[#9AA4B2] mb-1">
+                        Net Top Height (m)
+                      </label>
+                      <input
+                        id="net-height"
+                        type="number"
+                        step="0.02"
+                        min="0.8"
+                        max="2.6"
+                        value={
+                          selectedObject.metadata?.netHeightM ??
+                          (selectedObject.type === 'tennis_net' ? 1.07 : 2.43)
+                        }
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!Number.isNaN(val)) {
+                            updateProjectObject(project.id, selectedObject.id, {
+                              metadata: {
+                                ...selectedObject.metadata,
+                                netHeightM: Math.max(0.8, Math.min(2.6, val)),
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full px-2 py-1.5 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="net-width" className="block text-[10px] text-[#9AA4B2] mb-1">
+                        Post Span (m)
+                      </label>
+                      <input
+                        id="net-width"
+                        type="number"
+                        step="0.2"
+                        min="6.0"
+                        max="15.0"
+                        value={
+                          selectedObject.metadata?.netWidthM ??
+                          (selectedObject.type === 'tennis_net' ? 12.8 : 10.0)
+                        }
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!Number.isNaN(val)) {
+                            updateProjectObject(project.id, selectedObject.id, {
+                              metadata: {
+                                ...selectedObject.metadata,
+                                netWidthM: Math.max(6.0, Math.min(15.0, val)),
+                              },
+                            });
+                          }
+                        }}
+                        className="w-full px-2 py-1.5 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Lighting Mast Height */}
+              {selectedObject.type === 'lighting_mast' && (
                 <div className="space-y-2 pt-3 border-t border-white/10">
                   <div className="flex justify-between text-xs">
-                    <span className="text-[#9AA4B2]">Fence Span</span>
+                    <span className="text-[#9AA4B2]">Mast Height</span>
                     <span className="font-mono-tech">
-                      {formatLength(selectedObject.metadata?.fenceLengthM ?? 18, project.unit, 1)}
+                      {formatLength(selectedObject.metadata?.poleHeightM ?? 6.5, project.unit, 1)}
                     </span>
                   </div>
                   <input
                     type="range"
+                    aria-label="Lighting mast height in meters"
                     min="4"
-                    max="36"
-                    step="1"
-                    value={selectedObject.metadata?.fenceLengthM ?? 18}
+                    max="18"
+                    step="0.5"
+                    value={selectedObject.metadata?.poleHeightM ?? 6.5}
                     onChange={(e) =>
                       updateProjectObject(project.id, selectedObject.id, {
                         metadata: {
                           ...selectedObject.metadata,
-                          fenceLengthM: parseFloat(e.target.value),
+                          poleHeightM: parseFloat(e.target.value),
                         },
                       })
                     }
                     className="w-full accent-[#F07827]"
                   />
+                </div>
+              )}
+
+              {/* Perimeter Fence Span & Height */}
+              {selectedObject.type === 'perimeter_fence' && (
+                <div className="space-y-3 pt-3 border-t border-white/10">
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-[#9AA4B2]">Fence Span</span>
+                      <span className="font-mono-tech">
+                        {formatLength(selectedObject.metadata?.fenceLengthM ?? 18, project.unit, 1)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      aria-label="Perimeter fence span length"
+                      min="4"
+                      max="90"
+                      step="1"
+                      value={selectedObject.metadata?.fenceLengthM ?? 18}
+                      onChange={(e) =>
+                        updateProjectObject(project.id, selectedObject.id, {
+                          metadata: {
+                            ...selectedObject.metadata,
+                            fenceLengthM: parseFloat(e.target.value),
+                          },
+                        })
+                      }
+                      className="w-full accent-[#F07827]"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className="text-[#9AA4B2]">Fence Height</span>
+                      <span className="font-mono-tech">
+                        {formatLength(selectedObject.metadata?.fenceHeightM ?? 3.2, project.unit, 1)}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      aria-label="Perimeter fence height"
+                      min="1.2"
+                      max="6.0"
+                      step="0.2"
+                      value={selectedObject.metadata?.fenceHeightM ?? 3.2}
+                      onChange={(e) =>
+                        updateProjectObject(project.id, selectedObject.id, {
+                          metadata: {
+                            ...selectedObject.metadata,
+                            fenceHeightM: parseFloat(e.target.value),
+                          },
+                        })
+                      }
+                      className="w-full accent-[#1686C9]"
+                    />
+                  </div>
                 </div>
               )}
 
@@ -952,20 +1250,32 @@ export const WorkspaceView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-[11px] text-[#9AA4B2] mb-1">Court Standard</label>
+                <label htmlFor="ws-standard" className="block text-[11px] text-[#9AA4B2] mb-1">
+                  Facility Standard
+                </label>
                 <select
+                  id="ws-standard"
                   value={project.standard}
                   onChange={(e) => {
                     const std = e.target.value as CourtStandard;
                     const s = COURT_STANDARDS[std];
+                    const nextLen = std === 'CUSTOM' ? project.dimensions.lengthM : s.lengthM;
+                    const nextWid = std === 'CUSTOM' ? project.dimensions.widthM : s.widthM;
                     updateProject(project.id, {
+                      sport: s.sport,
                       standard: std,
                       dimensions: {
                         ...project.dimensions,
-                        lengthM: std === 'CUSTOM' ? project.dimensions.lengthM : s.lengthM,
-                        widthM: std === 'CUSTOM' ? project.dimensions.widthM : s.widthM,
+                        lengthM: nextLen,
+                        widthM: nextWid,
                         isHalfCourt: s.isHalfCourt,
                       },
+                      sportLayers: buildSportLayersForFacility(
+                        std,
+                        nextLen,
+                        nextWid,
+                        project.materials
+                      ),
                     });
                   }}
                   className="w-full px-2.5 py-2 bg-[#111318] border border-white/15 rounded text-xs text-[#F2F4F7]"
@@ -980,12 +1290,13 @@ export const WorkspaceView: React.FC = () => {
 
               <div className="grid grid-cols-3 gap-2">
                 <div>
-                  <label className="block text-[10px] text-[#9AA4B2] mb-1">
+                  <label htmlFor="ws-len" className="block text-[10px] text-[#9AA4B2] mb-1">
                     Length ({project.unit})
                   </label>
                   <input
+                    id="ws-len"
                     type="number"
-                    step="0.2"
+                    step="0.5"
                     value={metersToUnitValue(project.dimensions.lengthM, project.unit)}
                     onChange={(e) => {
                       const val = parseFloat(e.target.value);
@@ -994,7 +1305,7 @@ export const WorkspaceView: React.FC = () => {
                           standard: 'CUSTOM',
                           dimensions: {
                             ...project.dimensions,
-                            lengthM: Math.max(8, Math.min(42, unitValueToMeters(val, project.unit))),
+                            lengthM: Math.max(8, Math.min(135, unitValueToMeters(val, project.unit))),
                           },
                         });
                       }
@@ -1003,12 +1314,13 @@ export const WorkspaceView: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-[#9AA4B2] mb-1">
+                  <label htmlFor="ws-wid" className="block text-[10px] text-[#9AA4B2] mb-1">
                     Width ({project.unit})
                   </label>
                   <input
+                    id="ws-wid"
                     type="number"
-                    step="0.2"
+                    step="0.5"
                     value={metersToUnitValue(project.dimensions.widthM, project.unit)}
                     onChange={(e) => {
                       const val = parseFloat(e.target.value);
@@ -1017,7 +1329,7 @@ export const WorkspaceView: React.FC = () => {
                           standard: 'CUSTOM',
                           dimensions: {
                             ...project.dimensions,
-                            widthM: Math.max(6, Math.min(25, unitValueToMeters(val, project.unit))),
+                            widthM: Math.max(6, Math.min(95, unitValueToMeters(val, project.unit))),
                           },
                         });
                       }
@@ -1026,10 +1338,11 @@ export const WorkspaceView: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-[#9AA4B2] mb-1">
+                  <label htmlFor="ws-apron" className="block text-[10px] text-[#9AA4B2] mb-1">
                     Safety ({project.unit})
                   </label>
                   <input
+                    id="ws-apron"
                     type="number"
                     step="0.2"
                     value={metersToUnitValue(project.dimensions.apronM, project.unit)}
@@ -1039,7 +1352,7 @@ export const WorkspaceView: React.FC = () => {
                         updateProject(project.id, {
                           dimensions: {
                             ...project.dimensions,
-                            apronM: Math.max(0.5, Math.min(6, unitValueToMeters(val, project.unit))),
+                            apronM: Math.max(0.5, Math.min(12, unitValueToMeters(val, project.unit))),
                           },
                         });
                       }
@@ -1049,7 +1362,6 @@ export const WorkspaceView: React.FC = () => {
                 </div>
               </div>
 
-              {/* Orientation & Safety Zone Highlight */}
               <div>
                 <div className="flex items-center justify-between text-[11px] mb-1">
                   <span className="text-[#9AA4B2]">Court Orientation</span>
@@ -1059,6 +1371,7 @@ export const WorkspaceView: React.FC = () => {
                 </div>
                 <input
                   type="range"
+                  aria-label="Court orientation angle"
                   min="0"
                   max="355"
                   step="5"
@@ -1093,12 +1406,156 @@ export const WorkspaceView: React.FC = () => {
               </label>
             </div>
 
-            {/* Floor Materials & Colours */}
+            {/* Sport Marking Layers */}
+            <div className="space-y-3 pt-3 border-t border-white/10">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-[#9AA4B2]">
+                  Sport Marking Layers
+                </span>
+                <select
+                  aria-label="Add sport marking layer"
+                  value=""
+                  onChange={(e) => {
+                    const val = e.target.value as LayerSportType;
+                    if (val) addSportLayer(project.id, val);
+                  }}
+                  className="px-2 py-1 bg-[#202630] border border-white/15 rounded text-[11px] text-[#F07827] cursor-pointer focus:outline-none"
+                >
+                  <option value="">+ Add Layer</option>
+                  <option value="basketball">Basketball</option>
+                  <option value="football">Football / 5v5</option>
+                  <option value="handball">Handball (IHF)</option>
+                  <option value="volleyball">Volleyball</option>
+                  <option value="tennis">Tennis (ITF)</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                {resolveEffectiveSportLayers(project).map((layer, idx, arr) => (
+                  <div
+                    key={layer.id}
+                    className="p-2.5 bg-[#111318] border border-white/10 rounded space-y-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-medium text-[#F2F4F7] truncate">
+                          {layer.name}
+                        </div>
+                        <div className="text-[10px] font-mono-tech text-[#9AA4B2]">
+                          {layer.lengthM.toFixed(1)}×{layer.widthM.toFixed(1)} m
+                        </div>
+                      </div>
+                      <input
+                        type="color"
+                        aria-label={`Line colour for ${layer.name}`}
+                        value={layer.lineColor}
+                        onChange={(e) =>
+                          updateSportLayer(project.id, layer.id, { lineColor: e.target.value })
+                        }
+                        className="w-6 h-6 rounded bg-transparent border border-white/20 cursor-pointer shrink-0"
+                      />
+                      <button
+                        type="button"
+                        aria-label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
+                        onClick={() =>
+                          updateSportLayer(project.id, layer.id, { visible: !layer.visible })
+                        }
+                        className="p-1 text-[#9AA4B2] hover:text-[#F2F4F7] cursor-pointer"
+                      >
+                        {layer.visible ? (
+                          <Eye className="w-3.5 h-3.5" />
+                        ) : (
+                          <EyeOff className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      {arr.length > 1 && idx >= 0 && (
+                        <button
+                          type="button"
+                          aria-label={`Remove ${layer.name}`}
+                          onClick={() => removeSportLayer(project.id, layer.id)}
+                          className="p-1 text-[#9AA4B2] hover:text-red-400 cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <div>
+                        <label className="block text-[9px] text-[#9AA4B2]">Off X (m)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={layer.offsetX}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!Number.isNaN(v)) {
+                              updateSportLayer(project.id, layer.id, { offsetX: v });
+                            }
+                          }}
+                          className="w-full px-1.5 py-1 bg-[#1A2029] border border-white/10 rounded font-mono-tech text-[11px] text-[#F2F4F7]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] text-[#9AA4B2]">Off Z (m)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={layer.offsetZ}
+                          onChange={(e) => {
+                            const v = parseFloat(e.target.value);
+                            if (!Number.isNaN(v)) {
+                              updateSportLayer(project.id, layer.id, { offsetZ: v });
+                            }
+                          }}
+                          className="w-full px-1.5 py-1 bg-[#1A2029] border border-white/10 rounded font-mono-tech text-[11px] text-[#F2F4F7]"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] text-[#9AA4B2]">Rot</label>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateSportLayer(project.id, layer.id, {
+                              rotationDeg: (layer.rotationDeg + 90) % 360,
+                            })
+                          }
+                          className="w-full py-1 bg-[#1A2029] hover:bg-[#202630] border border-white/10 rounded font-mono-tech text-[11px] text-[#1686C9] cursor-pointer"
+                        >
+                          {layer.rotationDeg}°
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Ground Construction System & Floor Materials */}
             <div className="space-y-3 pt-3 border-t border-white/10">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-[#9AA4B2]">
-                Floor Materials &amp; Colours
+                Ground System &amp; Surfaces
               </div>
-              <div className="space-y-1.5">
+
+              <div>
+                <label htmlFor="ws-ground-system" className="block text-[11px] text-[#9AA4B2] mb-1">
+                  Ground Build-Up System
+                </label>
+                <select
+                  id="ws-ground-system"
+                  value={project.groundSystem ?? spec.defaultGroundSystem}
+                  onChange={(e) => setGroundSystem(project.id, e.target.value as GroundSystemType)}
+                  className="w-full px-2.5 py-2 bg-[#111318] border border-white/15 rounded text-xs text-[#F2F4F7]"
+                >
+                  {GROUND_SYSTEM_PRESETS.map((gs) => (
+                    <option key={gs.id} value={gs.id}>
+                      {gs.shortLabel} — {gs.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5 max-h-[210px] overflow-y-auto pr-0.5">
                 {SURFACE_PRESETS.map((preset) => {
                   const active = project.materials.surfaceType === preset.id;
                   return (
@@ -1116,13 +1573,13 @@ export const WorkspaceView: React.FC = () => {
                           },
                         })
                       }
-                      className={`w-full px-3 py-2 rounded border text-left text-xs flex items-center justify-between transition-colors cursor-pointer min-h-[38px] ${
+                      className={`w-full px-3 py-2 rounded border text-left text-xs flex items-center justify-between transition-colors cursor-pointer min-h-[36px] ${
                         active
                           ? 'bg-[#202630] border-[#F07827] text-[#F2F4F7]'
                           : 'bg-[#111318] border-white/10 text-[#9AA4B2] hover:text-[#F2F4F7]'
                       }`}
                     >
-                      <span>{preset.label}</span>
+                      <span className="truncate">{preset.label}</span>
                       <span
                         className="w-4 h-4 rounded-sm border border-white/20 shrink-0"
                         style={{ backgroundColor: preset.defaultSurfaceColor }}
@@ -1135,9 +1592,9 @@ export const WorkspaceView: React.FC = () => {
               <div className="space-y-2.5 pt-2">
                 {[
                   { key: 'surfaceColor' as const, label: 'Playing Surface Colour' },
-                  { key: 'paintColor' as const, label: 'Key & Centre Paint' },
+                  { key: 'paintColor' as const, label: 'Key & Zone Paint' },
                   { key: 'apronColor' as const, label: 'Safety Clearance Slab' },
-                  { key: 'lineColor' as const, label: 'Line Markings (5 cm)' },
+                  { key: 'lineColor' as const, label: 'Primary Line Markings' },
                 ].map((item) => (
                   <div key={item.key} className="flex items-center justify-between">
                     <span className="text-xs text-[#9AA4B2]">{item.label}</span>
@@ -1435,7 +1892,9 @@ export const WorkspaceView: React.FC = () => {
           {/* Subtle navigation & gizmo hint */}
           <div className="hidden lg:flex pointer-events-none absolute bottom-3 left-3 px-2.5 py-1 bg-[#111318]/85 border border-white/10 rounded text-[11px] text-[#9AA4B2] items-center gap-2">
             <span>
-              {toolMode === 'move' && selectedObject && !selectedObject.locked
+              {toolMode === 'measure'
+                ? 'Click two points on the ground or surface to measure 3D distance'
+                : toolMode === 'move' && selectedObject && !selectedObject.locked
                 ? 'Drag XYZ gizmo to move object'
                 : toolMode === 'rotate' && selectedObject && !selectedObject.locked
                 ? 'Drag rotation ring to rotate object'

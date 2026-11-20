@@ -4,6 +4,7 @@ import {
   defaultEngineeringAssumptions,
   formatArea,
   formatLength,
+  GROUND_SYSTEM_PRESETS,
 } from '../constants/courtStandards';
 import {
   BomSummary,
@@ -11,6 +12,7 @@ import {
   CostEstimateSummary,
   ENGINEERING_VALIDATION_NOTICE,
   formatFcfa,
+  getActiveSportEquipment,
 } from './courtCalculations';
 import {
   computeDrawingScaleRatio,
@@ -18,6 +20,12 @@ import {
   TECHNICAL_SHEETS,
   TechnicalSheetId,
 } from '../components/engineering/TechnicalPlanSvg';
+import {
+  buildPrimitivesForLayer,
+  resolveEffectiveSportLayers,
+  sampleArcPoints2D,
+  transformPoint2D,
+} from '../sports/markingPrimitives';
 import { CourtProject } from '../types/court';
 
 function slugify(name: string): string {
@@ -25,7 +33,7 @@ function slugify(name: string): string {
     name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '') || 'basketball-court'
+      .replace(/(^-|-$)/g, '') || 'sports-facility'
   );
 }
 
@@ -36,7 +44,18 @@ function pdfSafe(text: string): string {
     .replace(/→/g, '->')
     .replace(/—|–/g, '-')
     .replace(/·/g, '|')
-    .replace(/±/g, '+/-');
+    .replace(/±/g, '+/-')
+    .replace(/×/g, 'x');
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const clean = hex.replace('#', '');
+  if (clean.length !== 6) return [230, 240, 250];
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  if ([r, g, b].some(Number.isNaN)) return [230, 240, 250];
+  return [r, g, b];
 }
 
 function drawDocumentHeader(
@@ -46,6 +65,7 @@ function drawDocumentHeader(
   subtitle: string
 ): number {
   const pageW = doc.internal.pageSize.getWidth();
+  const spec = COURT_STANDARDS[project.standard] ?? COURT_STANDARDS.FIBA;
   doc.setFillColor(17, 19, 24);
   doc.rect(0, 0, pageW, 24, 'F');
 
@@ -55,7 +75,7 @@ function drawDocumentHeader(
   doc.setTextColor(242, 244, 247);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.text('BASKETBALL COURT STUDIO', 14, 10.5);
+  doc.text('BASKETBALL COURT STUDIO | ENGINEERING', 14, 10.5);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
@@ -73,7 +93,7 @@ function drawDocumentHeader(
   doc.setTextColor(154, 164, 178);
   doc.text(
     pdfSafe(
-      `${COURT_STANDARDS[project.standard].shortLabel} | ${project.environment.toUpperCase()} | ${formatLength(
+      `${spec.shortLabel} | ${project.environment.toUpperCase()} | ${formatLength(
         project.dimensions.lengthM,
         project.unit
       )} x ${formatLength(project.dimensions.widthM, project.unit)}`
@@ -103,16 +123,25 @@ function drawCadSheetPage(
   sheetId: TechnicalSheetId,
   style: PlanVisualStyle
 ) {
-  const pageW = doc.internal.pageSize.getWidth(); // 297 mm landscape
-  const pageH = doc.internal.pageSize.getHeight(); // 210 mm landscape
-  const spec = COURT_STANDARDS[project.standard];
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const spec = COURT_STANDARDS[project.standard] ?? COURT_STANDARDS.FIBA;
+  const groundSystem = project.groundSystem ?? spec.defaultGroundSystem;
+  const groundPreset =
+    GROUND_SYSTEM_PRESETS.find((g) => g.id === groundSystem) ?? GROUND_SYSTEM_PRESETS[0];
   const assumptions =
-    project.engineeringAssumptions ?? defaultEngineeringAssumptions(project.environment);
-  const { lengthM, widthM, apronM, isHalfCourt, orientationDeg } = project.dimensions;
+    project.engineeringAssumptions ?? defaultEngineeringAssumptions(project.environment, groundSystem);
+  const { lengthM, widthM, apronM, orientationDeg } = project.dimensions;
   const totalL = lengthM + apronM * 2;
   const totalW = widthM + apronM * 2;
   const scaleRatio = computeDrawingScaleRatio(project);
   const sheetMeta = TECHNICAL_SHEETS.find((s) => s.id === sheetId) ?? TECHNICAL_SHEETS[0];
+  const effectiveLayers = resolveEffectiveSportLayers(project).filter((l) => l.visible);
+  const equipmentList = getActiveSportEquipment(project);
+  const taggedEquipment = equipmentList.map((obj, idx) => ({
+    obj,
+    tag: `E${idx + 1}`,
+  }));
 
   const isTech = style === 'technical';
   if (isTech) {
@@ -123,12 +152,10 @@ function drawCadSheetPage(
     doc.rect(0, 0, pageW, pageH, 'F');
   }
 
-  // Outer CAD frame
   doc.setDrawColor(isTech ? 56 : 70, isTech ? 120 : 85, isTech ? 185 : 105);
   doc.setLineWidth(0.5);
   doc.rect(8, 8, pageW - 16, pageH - 16);
 
-  // Subtle drawing grid
   doc.setDrawColor(isTech ? 22 : 230, isTech ? 42 : 234, isTech ? 72 : 240);
   doc.setLineWidth(0.15);
   for (let gx = 18; gx < pageW - 12; gx += 12) {
@@ -138,7 +165,6 @@ function drawCadSheetPage(
     doc.line(10, gy, pageW - 10, gy);
   }
 
-  // Draw area bounds: x 18..279, y 14..166
   const areaX = 20;
   const areaY = 16;
   const areaW = 257;
@@ -154,7 +180,11 @@ function drawCadSheetPage(
   if (sheetId === 'front_elevation' || sheetId === 'side_elevation') {
     const span = sheetId === 'front_elevation' ? totalW + 4 : totalL + 4;
     const playSpan = sheetId === 'front_elevation' ? widthM : lengthM;
-    const sc = Math.min((areaW - 24) / span, (areaH - 30) / 7.5);
+    const maxPole = equipmentList
+      .filter((o) => o.type === 'lighting_mast')
+      .reduce((m, o) => Math.max(m, o.metadata?.poleHeightM ?? (totalL > 55 ? 12 : 6.5)), 6.5);
+    const maxH = Math.max(7.8, maxPole + 1.5);
+    const sc = Math.min((areaW - 24) / span, (areaH - 30) / maxH);
     const groundY = areaY + areaH - 22;
     const ex = (m: number) => cx + m * sc;
     const ey = (h: number) => groundY - h * sc;
@@ -166,35 +196,86 @@ function drawCadSheetPage(
     const basePx = Math.max(2.5, assumptions.subBaseThicknessM * sc);
     doc.setFillColor(isTech ? 24 : 210, isTech ? 48 : 216, isTech ? 84 : 225);
     doc.rect(ex(-(span - 4) / 2), groundY, (span - 4) * sc, slabPx, 'FD');
-    doc.setFillColor(isTech ? 18 : 190, isTech ? 34 : 196, isTech ? 58 : 206);
-    doc.rect(ex(-(span - 4) / 2), groundY + slabPx, (span - 4) * sc, basePx, 'FD');
+    if (groundSystem !== 'existing_slab') {
+      doc.setFillColor(isTech ? 18 : 190, isTech ? 34 : 196, isTech ? 58 : 206);
+      doc.rect(ex(-(span - 4) / 2), groundY + slabPx, (span - 4) * sc, basePx, 'FD');
+    }
 
     setStroke(240, 120, 39, 0.9);
     doc.line(ex(-playSpan / 2), groundY, ex(playSpan / 2), groundY);
 
-    const hoops = project.objects.filter((o) => o.visible && o.type === 'hoop_assembly');
-    hoops.forEach((h) => {
-      const rimH = h.metadata?.rimHeightM ?? 3.05;
-      const reach = h.metadata?.extensionArmM ?? 2.05;
-      if (sheetId === 'front_elevation') {
-        const px = ex(h.position[2]);
+    // Masts
+    equipmentList
+      .filter((o) => o.type === 'lighting_mast')
+      .forEach((m) => {
+        const ph = m.metadata?.poleHeightM ?? (totalL > 55 ? 12 : 6.5);
+        const mx = ex(sheetId === 'front_elevation' ? m.position[2] : m.position[0]);
+        setStroke(56, 189, 248, 0.65);
+        doc.line(mx, groundY, mx, ey(ph));
+      });
+
+    // Hoops
+    equipmentList
+      .filter((o) => o.type === 'hoop_assembly')
+      .forEach((h) => {
+        const rimH = h.metadata?.rimHeightM ?? 3.05;
+        const reach = h.metadata?.extensionArmM ?? 2.05;
+        if (sheetId === 'front_elevation') {
+          const px = ex(h.position[2]);
+          setStroke(240, 120, 39, 0.8);
+          doc.line(px, groundY, px, ey(rimH + 0.6));
+          setStroke(isTech ? 230 : 20, isTech ? 242 : 24, isTech ? 255 : 32, 0.55);
+          doc.rect(px - 0.9 * sc, ey(rimH + 0.9), 1.8 * sc, 1.05 * sc);
+        } else {
+          const dir = Math.cos(h.rotationY) >= 0 ? 1 : -1;
+          const postX = ex(h.position[0]);
+          const boardX = ex(h.position[0] + dir * reach);
+          setStroke(240, 120, 39, 0.8);
+          doc.line(postX, groundY, postX, ey(rimH + 0.25));
+          doc.line(postX, ey(rimH + 0.15), boardX, ey(rimH + 0.15));
+          setStroke(isTech ? 230 : 20, isTech ? 242 : 24, isTech ? 255 : 32, 0.65);
+          doc.line(boardX, ey(rimH - 0.15), boardX, ey(rimH + 0.9));
+          setStroke(240, 120, 39, 0.8);
+          doc.line(boardX, ey(rimH), ex(h.position[0] + dir * (reach + 0.55)), ey(rimH));
+        }
+      });
+
+    // Goals
+    equipmentList
+      .filter(
+        (o) =>
+          o.type === 'football_goal' ||
+          o.type === 'handball_goal' ||
+          o.type === 'multisport_combo_goal'
+      )
+      .forEach((g) => {
+        const gw = g.metadata?.goalWidthM ?? 3.0;
+        const gh = g.metadata?.goalHeightM ?? 2.0;
+        const gd = g.metadata?.goalDepthM ?? 1.4;
+        setStroke(isTech ? 230 : 20, isTech ? 242 : 24, isTech ? 255 : 32, 0.7);
+        if (sheetId === 'front_elevation') {
+          doc.rect(ex(g.position[2] - gw / 2), ey(gh), gw * sc, gh * sc);
+        } else {
+          const dir = Math.cos(g.rotationY) >= 0 ? 1 : -1;
+          doc.rect(ex(g.position[0] - (dir > 0 ? gd : 0)), ey(gh), gd * sc, gh * sc);
+        }
+      });
+
+    // Nets
+    equipmentList
+      .filter((o) => o.type === 'volleyball_net' || o.type === 'tennis_net')
+      .forEach((n) => {
+        const nw = n.metadata?.netWidthM ?? widthM + 1.0;
+        const nh = n.metadata?.netHeightM ?? (n.type === 'tennis_net' ? 1.07 : 2.43);
         setStroke(240, 120, 39, 0.8);
-        doc.line(px, groundY, px, ey(rimH + 0.6));
-        setStroke(isTech ? 230 : 20, isTech ? 242 : 24, isTech ? 255 : 32, 0.55);
-        doc.rect(px - 0.9 * sc, ey(rimH + 0.9), 1.8 * sc, 1.05 * sc);
-      } else {
-        const dir = Math.cos(h.rotationY) >= 0 ? 1 : -1;
-        const postX = ex(h.position[0]);
-        const boardX = ex(h.position[0] + dir * reach);
-        setStroke(240, 120, 39, 0.8);
-        doc.line(postX, groundY, postX, ey(rimH + 0.25));
-        doc.line(postX, ey(rimH + 0.15), boardX, ey(rimH + 0.15));
-        setStroke(isTech ? 230 : 20, isTech ? 242 : 24, isTech ? 255 : 32, 0.65);
-        doc.line(boardX, ey(rimH - 0.15), boardX, ey(rimH + 0.9));
-        setStroke(240, 120, 39, 0.8);
-        doc.line(boardX, ey(rimH), ex(h.position[0] + dir * (reach + 0.55)), ey(rimH));
-      }
-    });
+        if (sheetId === 'front_elevation') {
+          doc.line(ex(-nw / 2), groundY, ex(-nw / 2), ey(nh));
+          doc.line(ex(nw / 2), groundY, ex(nw / 2), ey(nh));
+          doc.rect(ex(-nw / 2), ey(nh), nw * sc, Math.min(nh, 1.0) * sc);
+        } else {
+          doc.line(ex(n.position[0]), groundY, ex(n.position[0]), ey(nh));
+        }
+      });
 
     doc.setTextColor(isTech ? 230 : 15, isTech ? 242 : 23, isTech ? 255 : 42);
     doc.setFont('courier', 'normal');
@@ -204,97 +285,141 @@ function drawCadSheetPage(
         `${sheetId === 'front_elevation' ? 'Total Width' : 'Total Length'}: ${formatLength(
           span - 4,
           project.unit
-        )} | Playing: ${formatLength(playSpan, project.unit)} | Rim Height: ${formatLength(
-          3.05,
-          project.unit
-        )}`
+        )} | Playing: ${formatLength(playSpan, project.unit)} | Build-up: ${groundPreset.shortLabel}`
       ),
       cx,
       groundY + slabPx + basePx + 10,
       { align: 'center' }
     );
   } else {
-    // Plan sheets
+    // Plan sheets via single-source marking primitives
     const mmPerM = Math.min((areaW - 26) / (totalL + 2.5), (areaH - 22) / (totalW + 2.5));
     const tx = (mx: number) => cx + mx * mmPerM;
     const tz = (mz: number) => cy + mz * mmPerM;
 
-    // Slab
+    // Slab / Footprint
     doc.setFillColor(isTech ? 16 : 228, isTech ? 31 : 232, isTech ? 56 : 238);
     setStroke(isTech ? 56 : 70, isTech ? 189 : 85, isTech ? 248 : 105, 0.45);
     doc.rect(tx(-totalL / 2), tz(-totalW / 2), totalL * mmPerM, totalW * mmPerM, 'FD');
 
-    // Playing court
-    doc.setFillColor(isTech ? 20 : 242, isTech ? 44 : 234, isTech ? 80 : 218);
-    setStroke(isTech ? 235 : 20, isTech ? 244 : 25, isTech ? 255 : 35, 0.6);
+    // Playing surface
+    const surfRgb = isTech ? [20, 44, 80] : hexToRgb(project.materials.surfaceColor);
+    doc.setFillColor(surfRgb[0], surfRgb[1], surfRgb[2]);
+    setStroke(isTech ? 235 : 20, isTech ? 244 : 25, isTech ? 255 : 35, 0.55);
     doc.rect(tx(-lengthM / 2), tz(-widthM / 2), lengthM * mmPerM, widthM * mmPerM, 'FD');
 
-    // Key, centre circle & 3-point arc
-    const keyW = Math.min(spec.keyWidthM, widthM * 0.48);
-    const keyL = Math.min(spec.keyLengthM, isHalfCourt ? lengthM * 0.78 : lengthM * 0.44);
-    const ftR = Math.min(spec.freeThrowRadiusM, keyW / 2);
-    const ccR = Math.min(spec.centerCircleRadiusM, widthM * 0.25);
-    const basketOff = Math.min(spec.basketCenterFromBaselineM, lengthM * 0.2);
+    effectiveLayers.forEach((layer, layerIdx) => {
+      const prims = buildPrimitivesForLayer(layer);
+      const [lr, lg, lb] = isTech
+        ? layerIdx === 0
+          ? [235, 244, 255]
+          : hexToRgb(layer.lineColor)
+        : effectiveLayers.length > 1
+        ? hexToRgb(layer.lineColor)
+        : [20, 25, 35];
 
-    doc.rect(tx(-lengthM / 2), tz(-keyW / 2), keyL * mmPerM, keyW * mmPerM);
-    doc.circle(tx(-lengthM / 2 + keyL), tz(0), ftR * mmPerM);
+      const [pr, pg, pb] = layer.paintColor
+        ? hexToRgb(layer.paintColor)
+        : isTech
+        ? [30, 58, 102]
+        : hexToRgb(project.materials.paintColor);
 
-    const maxArcR = isHalfCourt
-      ? Math.max(2.5, lengthM - basketOff - 0.45)
-      : Math.max(2.5, lengthM * 0.48);
-    const r3 = Math.min(spec.threePointRadiusM, maxArcR);
-    const dy3 = Math.max(1.0, Math.min(widthM / 2 - spec.threePointCornerInsetM, r3 - 0.15));
-    const cornerX = Math.sqrt(Math.max(0, r3 * r3 - dy3 * dy3));
-    const arcHalfAngle = Math.asin(Math.min(0.999, dy3 / Math.max(1, r3)));
+      const toMm = (lx: number, lz: number): [number, number] => {
+        const [wx, wz] = transformPoint2D(lx, lz, layer);
+        return [tx(wx), tz(wz)];
+      };
 
-    const drawThreePtEnd = (dir: 1 | -1) => {
-      const baseX = -dir * (lengthM / 2);
-      const bskX = baseX + dir * basketOff;
-      const startX = bskX + dir * cornerX;
-      doc.line(tx(baseX), tz(-dy3), tx(startX), tz(-dy3));
-      doc.line(tx(baseX), tz(dy3), tx(startX), tz(dy3));
-      const steps = 28;
-      for (let i = 0; i < steps; i++) {
-        const a0 = -arcHalfAngle + (i / steps) * (arcHalfAngle * 2);
-        const a1 = -arcHalfAngle + ((i + 1) / steps) * (arcHalfAngle * 2);
-        const x0 = bskX + dir * Math.cos(a0) * r3;
-        const z0 = Math.sin(a0) * r3;
-        const x1 = bskX + dir * Math.cos(a1) * r3;
-        const z1 = Math.sin(a1) * r3;
-        doc.line(tx(x0), tz(z0), tx(x1), tz(z1));
-      }
-    };
-    drawThreePtEnd(1);
+      // Paint pass
+      doc.setFillColor(pr, pg, pb);
+      prims
+        .filter((p) => p.role === 'paint')
+        .forEach((p) => {
+          if (p.kind === 'rect') {
+            const pts = [
+              toMm(p.x - p.w / 2, p.z - p.h / 2),
+              toMm(p.x + p.w / 2, p.z - p.h / 2),
+              toMm(p.x + p.w / 2, p.z + p.h / 2),
+              toMm(p.x - p.w / 2, p.z + p.h / 2),
+            ];
+            doc.triangle(pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1], 'F');
+            doc.triangle(pts[0][0], pts[0][1], pts[2][0], pts[2][1], pts[3][0], pts[3][1], 'F');
+          } else if (p.kind === 'circle') {
+            const [cxMm, czMm] = toMm(p.cx, p.cz);
+            doc.circle(cxMm, czMm, p.r * mmPerM, 'F');
+          }
+        });
 
-    if (!isHalfCourt) {
-      doc.line(tx(0), tz(-widthM / 2), tx(0), tz(widthM / 2));
-      doc.circle(tx(0), tz(0), ccR * mmPerM);
-      doc.rect(tx(lengthM / 2 - keyL), tz(-keyW / 2), keyL * mmPerM, keyW * mmPerM);
-      doc.circle(tx(lengthM / 2 - keyL), tz(0), ftR * mmPerM);
-      drawThreePtEnd(-1);
-    }
+      // Line pass
+      setStroke(lr, lg, lb, Math.max(0.25, Math.min(0.65, layer.lineWidthM * mmPerM * 1.1)));
+      prims
+        .filter((p) => p.role === 'line')
+        .forEach((p) => {
+          if (p.kind === 'line') {
+            const [x1, y1] = toMm(p.x1, p.z1);
+            const [x2, y2] = toMm(p.x2, p.z2);
+            if (!p.dashed) {
+              doc.line(x1, y1, x2, y2);
+            } else {
+              const total = Math.hypot(x2 - x1, y2 - y1);
+              const dashMm = Math.max(0.8, p.dashed[0] * mmPerM);
+              const gapMm = Math.max(0.8, p.dashed[1] * mmPerM);
+              const step = dashMm + gapMm;
+              if (total > 0.2) {
+                for (let d = 0; d < total; d += step) {
+                  const t0 = d / total;
+                  const t1 = Math.min(1, (d + dashMm) / total);
+                  doc.line(
+                    x1 + (x2 - x1) * t0,
+                    y1 + (y2 - y1) * t0,
+                    x1 + (x2 - x1) * t1,
+                    y1 + (y2 - y1) * t1
+                  );
+                }
+              }
+            }
+          } else if (p.kind === 'rect') {
+            const pts = [
+              toMm(p.x - p.w / 2, p.z - p.h / 2),
+              toMm(p.x + p.w / 2, p.z - p.h / 2),
+              toMm(p.x + p.w / 2, p.z + p.h / 2),
+              toMm(p.x - p.w / 2, p.z + p.h / 2),
+            ];
+            for (let i = 0; i < 4; i++) {
+              const a = pts[i];
+              const b = pts[(i + 1) % 4];
+              doc.line(a[0], a[1], b[0], b[1]);
+            }
+          } else if (p.kind === 'circle') {
+            const [cxMm, czMm] = toMm(p.cx, p.cz);
+            doc.circle(cxMm, czMm, Math.max(0.4, p.r * mmPerM), p.filled ? 'F' : 'S');
+          } else if (p.kind === 'arc') {
+            const pts = sampleArcPoints2D(p.cx, p.cz, p.r, p.startAngle, p.endAngle, 28);
+            for (let i = 0; i < pts.length - 1; i++) {
+              if (p.dashed && i % 2 === 1) continue;
+              const [x1, y1] = toMm(pts[i][0], pts[i][1]);
+              const [x2, y2] = toMm(pts[i + 1][0], pts[i + 1][1]);
+              doc.line(x1, y1, x2, y2);
+            }
+          }
+        });
+    });
 
-    // Equipment overlay
-    const equip = project.objects.filter(
-      (o) =>
-        o.visible &&
-        ![
-          'court_slab',
-          'playing_surface',
-          'boundary_lines',
-          'centre_markings',
-          'free_throw_areas',
-          'three_point_lines',
-          'court_markings',
-        ].includes(o.type)
-    );
-    equip.forEach((obj, idx) => {
-      if (
-        sheetId === 'lighting_fencing_plan' &&
-        !['lighting_mast', 'perimeter_fence', 'hoop_assembly'].includes(obj.type)
-      ) {
-        return;
-      }
+    // Equipment overlay with consistent E1..En tags
+    const filteredEquip =
+      sheetId === 'lighting_fencing_plan'
+        ? taggedEquipment.filter(({ obj }) =>
+            [
+              'lighting_mast',
+              'perimeter_fence',
+              'hoop_assembly',
+              'football_goal',
+              'handball_goal',
+              'multisport_combo_goal',
+            ].includes(obj.type)
+          )
+        : taggedEquipment;
+
+    filteredEquip.forEach(({ obj, tag }) => {
       const px = tx(obj.position[0]);
       const pz = tz(obj.position[2]);
       if (obj.type === 'perimeter_fence') {
@@ -303,19 +428,24 @@ function drawCadSheetPage(
         const dz = -Math.sin(obj.rotationY) * (span / 2) * mmPerM;
         setStroke(240, 120, 39, 0.85);
         doc.line(px - dx, pz - dz, px + dx, pz + dz);
+      } else if (obj.type === 'volleyball_net' || obj.type === 'tennis_net') {
+        const nw = (obj.metadata?.netWidthM ?? widthM + 1.0) * mmPerM;
+        const dx = Math.sin(obj.rotationY) * (nw / 2);
+        const dz = Math.cos(obj.rotationY) * (nw / 2);
+        setStroke(240, 120, 39, 0.85);
+        doc.line(px - dx, pz - dz, px + dx, pz + dz);
       } else {
         doc.setFillColor(240, 120, 39);
-        doc.circle(px, pz, 1.4, 'F');
+        doc.circle(px, pz, 1.3, 'F');
       }
       if (sheetId === 'equipment_plan' || sheetId === 'lighting_fencing_plan') {
         doc.setTextColor(isTech ? 235 : 20, isTech ? 245 : 25, isTech ? 255 : 35);
         doc.setFont('courier', 'normal');
         doc.setFontSize(7);
-        doc.text(`E${idx + 1}`, px + 2, pz - 1.5);
+        doc.text(tag, px + 2, pz - 1.5);
       }
     });
 
-    // Dimensions text
     doc.setTextColor(isTech ? 56 : 15, isTech ? 189 : 94, isTech ? 248 : 156);
     doc.setFont('courier', 'normal');
     doc.setFontSize(8.5);
@@ -324,10 +454,7 @@ function drawCadSheetPage(
         `Playing: ${formatLength(lengthM, project.unit)} x ${formatLength(
           widthM,
           project.unit
-        )} | Safety Apron: +${formatLength(apronM, project.unit)} | Total Slab: ${formatLength(
-          totalL,
-          project.unit
-        )} x ${formatLength(totalW, project.unit)}`
+        )} | Safety Apron: +${formatLength(apronM, project.unit)} | Ground: ${groundPreset.shortLabel}`
       ),
       cx,
       tz(totalW / 2) + 8,
@@ -391,13 +518,12 @@ function appendBomPages(doc: jsPDF, project: CourtProject, bom: BomSummary, star
     `Derived from ${formatLength(project.dimensions.lengthM, project.unit)} x ${formatLength(
       project.dimensions.widthM,
       project.unit
-    )} playing court + ${formatLength(project.dimensions.apronM, project.unit)} safety apron`
+    )} playing zone + ${formatLength(project.dimensions.apronM, project.unit)} apron (${bom.groundSystemLabel})`
   );
 
-  // Structural assumptions strip
   doc.setFillColor(241, 245, 249);
   doc.setDrawColor(203, 213, 225);
-  doc.rect(14, y, 182, 22, 'FD');
+  doc.rect(14, y, 182, 24, 'FD');
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.5);
@@ -407,9 +533,8 @@ function appendBomPages(doc: jsPDF, project: CourtProject, bom: BomSummary, star
   bom.engineeringNotes.slice(0, 3).forEach((note, idx) => {
     doc.text(pdfSafe(`- ${note}`), 17, y + 11 + idx * 4, { maxWidth: 176 });
   });
-  y += 28;
+  y += 29;
 
-  // Table header
   const drawTableHeader = () => {
     doc.setFillColor(26, 32, 41);
     doc.rect(14, y, 182, 7.5, 'F');
@@ -477,7 +602,6 @@ function appendCostPages(
     'Materials, Labour, Equipment, Transport, Overheads & Contingency'
   );
 
-  // Prominent Benin indicative price disclaimer box
   doc.setFillColor(255, 244, 235);
   doc.setDrawColor(240, 120, 39);
   doc.setLineWidth(0.5);
@@ -492,7 +616,6 @@ function appendCostPages(
   doc.text(pdfSafe(cost.disclaimer), 17, y + 10, { maxWidth: 176 });
   y += 21;
 
-  // Summary KPIs
   const summaryRows: Array<[string, string]> = [
     ['Materials Subtotal', formatFcfa(cost.materialsSubtotalFcfa)],
     ['Labour Costs', formatFcfa(cost.labourSubtotalFcfa)],
@@ -675,6 +798,7 @@ export function buildCompleteProjectReportPdf(
   style: PlanVisualStyle = 'architectural'
 ): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+  const spec = COURT_STANDARDS[project.standard] ?? COURT_STANDARDS.FIBA;
   let pageNum = 1;
   let y = drawDocumentHeader(
     doc,
@@ -692,7 +816,8 @@ export function buildCompleteProjectReportPdf(
   const overviewPairs: Array<[string, string]> = [
     ['Project Name', project.name],
     ['Client / Site', `${project.client || 'Private Client'} | ${project.location || 'TBD'}`],
-    ['Court Standard & Env', `${COURT_STANDARDS[project.standard].label} (${project.environment})`],
+    ['Facility Standard & Env', `${spec.label} (${project.environment})`],
+    ['Ground System & Sports', `${bom.groundSystemLabel} | ${bom.activeSportsSummary}`],
     [
       'Playing Court Area',
       `${formatLength(project.dimensions.lengthM, project.unit)} x ${formatLength(
@@ -701,13 +826,16 @@ export function buildCompleteProjectReportPdf(
       )} (${formatArea(bom.playingAreaM2, project.unit)})`,
     ],
     [
-      'Total Slab Footprint',
+      'Total Envelope Footprint',
       `${formatLength(project.dimensions.lengthM + project.dimensions.apronM * 2, project.unit)} x ${formatLength(
         project.dimensions.widthM + project.dimensions.apronM * 2,
         project.unit
       )} (${formatArea(bom.totalSlabAreaM2, project.unit)})`,
     ],
-    ['Placed Hoops / Masts / Fence', `${bom.hoopCount} hoop(s) | ${bom.lightingMastCount} mast(s) | ${bom.fenceTotalLengthM} m fence`],
+    [
+      'Placed Equipment',
+      `${bom.hoopCount} hoop(s) | ${bom.goalCount} goal(s) | ${bom.netCount} net(s) | ${bom.lightingMastCount} mast(s) | ${bom.fenceTotalLengthM} m fence`,
+    ],
     ['Indicative Grand Total', `${formatFcfa(cost.grandTotalFcfa)} (incl. ${cost.contingencyPct}% contingency)`],
     ['Estimated Construction Duration', `${schedule.totalDurationDays} working days (10 ordered stages)`],
   ];
@@ -743,14 +871,12 @@ export function buildCompleteProjectReportPdf(
 
   drawPageFooter(doc, pageNum, ENGINEERING_VALIDATION_NOTICE);
 
-  // Landscape Technical Drawing Sheets
   TECHNICAL_SHEETS.forEach((sheet) => {
     doc.addPage('a4', 'landscape');
     pageNum++;
     drawCadSheetPage(doc, project, sheet.id, style);
   });
 
-  // Portrait BOM, Cost, and Schedule sections
   doc.addPage('a4', 'portrait');
   pageNum = appendBomPages(doc, project, bom, pageNum + 1);
 

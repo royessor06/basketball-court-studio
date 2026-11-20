@@ -34,6 +34,7 @@ import {
   CostSectionId,
   ENGINEERING_VALIDATION_NOTICE,
   formatFcfa,
+  getActiveSportEquipment,
 } from '../engineering/courtCalculations';
 import {
   exportBomPdf,
@@ -103,19 +104,7 @@ export const EngineeringView: React.FC = () => {
     window.setTimeout(() => setExportNotice(null), 2400);
   };
 
-  const equipmentList = project.objects.filter(
-    (o) =>
-      o.visible &&
-      ![
-        'court_slab',
-        'playing_surface',
-        'boundary_lines',
-        'centre_markings',
-        'free_throw_areas',
-        'three_point_lines',
-        'court_markings',
-      ].includes(o.type)
-  );
+  const equipmentList = getActiveSportEquipment(project);
 
   const costSections: Array<{ id: CostSectionId; label: string; subtotal: number }> = [
     { id: 'materials', label: 'Materials (Linked to BOM)', subtotal: cost.materialsSubtotalFcfa },
@@ -162,6 +151,10 @@ export const EngineeringView: React.FC = () => {
               </button>
               <span aria-hidden="true">·</span>
               <span>{spec.label}</span>
+              <span aria-hidden="true">·</span>
+              <span>{bom.groundSystemLabel}</span>
+              <span aria-hidden="true">·</span>
+              <span>{bom.activeSportsSummary}</span>
               <span aria-hidden="true">·</span>
               <span className="capitalize">{project.environment}</span>
               <span aria-hidden="true">·</span>
@@ -228,16 +221,26 @@ export const EngineeringView: React.FC = () => {
               {formatArea(bom.playingAreaM2, project.unit)} / {formatArea(bom.totalSlabAreaM2, project.unit)}
             </div>
           </div>
-          <div className="p-4 bg-[#1A2029] border border-white/10 rounded-lg">
-            <div className="text-xs text-[#9AA4B2]">Concrete Volume (Slab + Footings)</div>
-            <div className="font-mono-tech text-lg font-semibold text-[#1686C9] mt-1">
-              {bom.items
-                .filter((i) => i.categoryId === 'concrete')
-                .reduce((s, i) => s + i.quantity, 0)
-                .toFixed(1)}{' '}
-              m³
-            </div>
-          </div>
+          {(() => {
+            const concreteVol = bom.items
+              .filter((i) => i.categoryId === 'concrete')
+              .reduce((s, i) => s + i.quantity, 0);
+            return concreteVol > 0 ? (
+              <div className="p-4 bg-[#1A2029] border border-white/10 rounded-lg">
+                <div className="text-xs text-[#9AA4B2]">Concrete Volume (Slab + Footings)</div>
+                <div className="font-mono-tech text-lg font-semibold text-[#1686C9] mt-1">
+                  {concreteVol.toFixed(1)} m³
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 bg-[#1A2029] border border-white/10 rounded-lg">
+                <div className="text-xs text-[#9AA4B2]">Ground Build-Up &amp; Markings</div>
+                <div className="font-mono-tech text-lg font-semibold text-[#1686C9] mt-1 truncate">
+                  {bom.groundSystemLabel} · {bom.markingLinearM} m
+                </div>
+              </div>
+            );
+          })()}
           <div className="p-4 bg-[#1A2029] border border-white/10 rounded-lg">
             <div className="text-xs text-[#9AA4B2]">Indicative Project Budget</div>
             <div className="font-mono-tech text-lg font-semibold text-[#F07827] mt-1">
@@ -481,11 +484,38 @@ export const EngineeringView: React.FC = () => {
                                 ? `${obj.metadata?.backboardType ?? 'tempered_glass'} · ${
                                     obj.metadata?.supportStyle ?? 'hydraulic_boom'
                                   } · Rim ${formatLength(obj.metadata?.rimHeightM ?? 3.05, project.unit)}`
+                                : obj.type === 'football_goal' || obj.type === 'handball_goal'
+                                ? `Goal ${formatLength(
+                                    obj.metadata?.goalWidthM ?? (obj.type === 'handball_goal' ? 3.0 : 7.32),
+                                    project.unit
+                                  )} × ${formatLength(
+                                    obj.metadata?.goalHeightM ?? (obj.type === 'handball_goal' ? 2.0 : 2.44),
+                                    project.unit
+                                  )}`
+                                : obj.type === 'multisport_combo_goal'
+                                ? `Combo ${formatLength(obj.metadata?.goalWidthM ?? 3.0, project.unit)} · Rim ${formatLength(
+                                    obj.metadata?.rimHeightM ?? 3.05,
+                                    project.unit
+                                  )}`
+                                : obj.type === 'volleyball_net' || obj.type === 'tennis_net'
+                                ? `Net ${formatLength(
+                                    obj.metadata?.netWidthM ?? (obj.type === 'tennis_net' ? 12.8 : 9.5),
+                                    project.unit
+                                  )} × ${formatLength(
+                                    obj.metadata?.netHeightM ?? (obj.type === 'tennis_net' ? 1.07 : 2.43),
+                                    project.unit
+                                  )}`
+                                : obj.type === 'lighting_mast'
+                                ? `Mast H ${formatLength(obj.metadata?.poleHeightM ?? 9.0, project.unit)}`
                                 : obj.type === 'perimeter_fence'
                                 ? `Span ${formatLength(
                                     obj.metadata?.fenceLengthM ?? totalL * 0.72,
                                     project.unit
-                                  )}`
+                                  )} · H ${formatLength(obj.metadata?.fenceHeightM ?? 3.6, project.unit)}`
+                                : obj.type === 'dugout_shelter'
+                                ? 'Covered team shelter (4-seat)'
+                                : obj.type === 'corner_flag'
+                                ? 'Flexible pitch corner marker'
                                 : 'Standard site fixture'}
                             </td>
                           </tr>
@@ -507,87 +537,98 @@ export const EngineeringView: React.FC = () => {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="font-display text-base font-semibold text-[#F2F4F7]">
-                    Engineering Takeoff Assumptions
+                    Engineering Takeoff Assumptions · {bom.groundSystemLabel}
                   </h2>
                   <p className="text-xs text-[#9AA4B2] mt-0.5">
-                    Adjust slab depth, sub-base thickness, and waste allowance; quantities and FCFA
-                    estimates recalculate immediately.
+                    {bom.groundSystem === 'existing_slab'
+                      ? 'Renovation on existing slab: earthworks, excavation, sub-base, and new concrete slab are omitted; waste factor applies to surface resurfacing.'
+                      : 'Adjust structural section thickness, excavation depth, and waste allowance; quantities and FCFA estimates recalculate immediately.'}
                   </p>
                 </div>
                 <span className="font-mono-tech text-xs text-[#1686C9]">
-                  11 Engineering Categories · {bom.items.length} Line Items
+                  {bom.items.length} BOM Line Items · {bom.activeSportsSummary}
                 </span>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {bom.groundSystem !== 'existing_slab' && (
+                  <>
+                    {(bom.groundSystem === 'concrete_slab' || bom.groundSystem === 'sprung_wood') && (
+                      <div>
+                        <label htmlFor="bom-slab-thickness" className="block text-[11px] text-[#9AA4B2] mb-1">
+                          Concrete Slab Thickness (m)
+                        </label>
+                        <input
+                          id="bom-slab-thickness"
+                          type="number"
+                          step="0.01"
+                          min="0.1"
+                          max="0.3"
+                          value={assumptions.slabThicknessM}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            if (!Number.isNaN(val)) {
+                              updateEngineeringAssumptions(project.id, {
+                                slabThicknessM: Math.max(0.1, Math.min(0.3, val)),
+                              });
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <label htmlFor="bom-subbase-thickness" className="block text-[11px] text-[#9AA4B2] mb-1">
+                        Aggregate Sub-Base (m)
+                      </label>
+                      <input
+                        id="bom-subbase-thickness"
+                        type="number"
+                        step="0.05"
+                        min="0.1"
+                        max="0.45"
+                        value={assumptions.subBaseThicknessM}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!Number.isNaN(val)) {
+                            updateEngineeringAssumptions(project.id, {
+                              subBaseThicknessM: Math.max(0.1, Math.min(0.45, val)),
+                            });
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="bom-excavation-depth" className="block text-[11px] text-[#9AA4B2] mb-1">
+                        Excavation Depth (m)
+                      </label>
+                      <input
+                        id="bom-excavation-depth"
+                        type="number"
+                        step="0.05"
+                        min="0.15"
+                        max="0.7"
+                        value={assumptions.excavationDepthM}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value);
+                          if (!Number.isNaN(val)) {
+                            updateEngineeringAssumptions(project.id, {
+                              excavationDepthM: Math.max(0.15, Math.min(0.7, val)),
+                            });
+                          }
+                        }}
+                        className="w-full px-3 py-2 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
+                      />
+                    </div>
+                  </>
+                )}
                 <div>
-                  <label className="block text-[11px] text-[#9AA4B2] mb-1">
-                    Concrete Slab Thickness (m)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0.1"
-                    max="0.3"
-                    value={assumptions.slabThicknessM}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!Number.isNaN(val)) {
-                        updateEngineeringAssumptions(project.id, {
-                          slabThicknessM: Math.max(0.1, Math.min(0.3, val)),
-                        });
-                      }
-                    }}
-                    className="w-full px-3 py-2 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-[#9AA4B2] mb-1">
-                    Aggregate Sub-Base (m)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.05"
-                    min="0.1"
-                    max="0.45"
-                    value={assumptions.subBaseThicknessM}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!Number.isNaN(val)) {
-                        updateEngineeringAssumptions(project.id, {
-                          subBaseThicknessM: Math.max(0.1, Math.min(0.45, val)),
-                        });
-                      }
-                    }}
-                    className="w-full px-3 py-2 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-[#9AA4B2] mb-1">
-                    Excavation Depth (m)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.05"
-                    min="0.15"
-                    max="0.7"
-                    value={assumptions.excavationDepthM}
-                    onChange={(e) => {
-                      const val = parseFloat(e.target.value);
-                      if (!Number.isNaN(val)) {
-                        updateEngineeringAssumptions(project.id, {
-                          excavationDepthM: Math.max(0.15, Math.min(0.7, val)),
-                        });
-                      }
-                    }}
-                    className="w-full px-3 py-2 bg-[#111318] border border-white/15 rounded font-mono-tech text-xs text-[#F2F4F7]"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] text-[#9AA4B2] mb-1">
+                  <label htmlFor="bom-waste-factor" className="block text-[11px] text-[#9AA4B2] mb-1">
                     Material Waste Factor (%)
                   </label>
                   <input
+                    id="bom-waste-factor"
                     type="number"
                     step="1"
                     min="0"

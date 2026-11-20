@@ -11,14 +11,18 @@ import {
 } from 'lucide-react';
 import { TopNav } from '../components/layout/TopNav';
 import {
+  buildSportLayersForFacility,
   COURT_STANDARDS,
+  GROUND_SYSTEM_PRESETS,
   metersToUnitValue,
   unitValueToMeters,
 } from '../constants/courtStandards';
+import { resolveEffectiveSportLayers } from '../sports/markingPrimitives';
 import { useProjectStore } from '../store/useProjectStore';
 import {
   CourtEnvironment,
   CourtStandard,
+  GroundSystemType,
   MeasurementUnit,
   ProjectStatus,
 } from '../types/court';
@@ -33,6 +37,7 @@ export const ProjectSettingsView: React.FC = () => {
     duplicateProject,
     deleteProject,
     resetProjectCourt,
+    setGroundSystem,
   } = useProjectStore();
 
   const [savedFeedback, setSavedFeedback] = useState(false);
@@ -95,17 +100,26 @@ export const ProjectSettingsView: React.FC = () => {
 
   const handleStandardChange = (std: CourtStandard) => {
     const spec = COURT_STANDARDS[std];
+    const nextLengthM = std === 'CUSTOM' ? project.dimensions.lengthM : spec.lengthM;
+    const nextWidthM = std === 'CUSTOM' ? project.dimensions.widthM : spec.widthM;
     updateProject(project.id, {
       standard: std,
+      sport: spec.sport,
+      groundSystem: spec.defaultGroundSystem,
       dimensions: {
         ...project.dimensions,
-        lengthM: std === 'CUSTOM' ? project.dimensions.lengthM : spec.lengthM,
-        widthM: std === 'CUSTOM' ? project.dimensions.widthM : spec.widthM,
+        lengthM: nextLengthM,
+        widthM: nextWidthM,
         isHalfCourt: spec.isHalfCourt,
       },
+      sportLayers: buildSportLayersForFacility(std, nextLengthM, nextWidthM, project.materials),
     });
     handleSaveNotify();
   };
+
+  const activeGroundSystem: GroundSystemType =
+    project.groundSystem ?? COURT_STANDARDS[project.standard].defaultGroundSystem;
+  const activeLayers = resolveEffectiveSportLayers(project);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#111318] text-[#F2F4F7]">
@@ -156,8 +170,11 @@ export const ProjectSettingsView: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs text-[#9AA4B2] mb-1.5">Project Name</label>
+              <label htmlFor="settings-project-name" className="block text-xs text-[#9AA4B2] mb-1.5">
+                Project Name
+              </label>
               <input
+                id="settings-project-name"
                 type="text"
                 value={project.name}
                 onChange={(e) => {
@@ -169,8 +186,11 @@ export const ProjectSettingsView: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs text-[#9AA4B2] mb-1.5">Project Status</label>
+              <label htmlFor="settings-project-status" className="block text-xs text-[#9AA4B2] mb-1.5">
+                Project Status
+              </label>
               <select
+                id="settings-project-status"
                 value={project.status}
                 onChange={(e) => {
                   updateProject(project.id, { status: e.target.value as ProjectStatus }, false);
@@ -186,8 +206,11 @@ export const ProjectSettingsView: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs text-[#9AA4B2] mb-1.5">Client / Organization</label>
+              <label htmlFor="settings-client" className="block text-xs text-[#9AA4B2] mb-1.5">
+                Client / Organization
+              </label>
               <input
+                id="settings-client"
                 type="text"
                 value={project.client}
                 onChange={(e) => {
@@ -199,8 +222,11 @@ export const ProjectSettingsView: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs text-[#9AA4B2] mb-1.5">Site Location</label>
+              <label htmlFor="settings-location" className="block text-xs text-[#9AA4B2] mb-1.5">
+                Site Location
+              </label>
               <input
+                id="settings-location"
                 type="text"
                 value={project.location}
                 onChange={(e) => {
@@ -213,8 +239,11 @@ export const ProjectSettingsView: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs text-[#9AA4B2] mb-1.5">Architectural Notes</label>
+            <label htmlFor="settings-notes" className="block text-xs text-[#9AA4B2] mb-1.5">
+              Architectural Notes
+            </label>
             <textarea
+              id="settings-notes"
               rows={3}
               value={project.notes}
               onChange={(e) => {
@@ -232,10 +261,13 @@ export const ProjectSettingsView: React.FC = () => {
             Court Specification &amp; Units
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label className="block text-xs text-[#9AA4B2] mb-1.5">Court Standard</label>
+              <label htmlFor="settings-standard" className="block text-xs text-[#9AA4B2] mb-1.5">
+                Facility Standard
+              </label>
               <select
+                id="settings-standard"
                 value={project.standard}
                 onChange={(e) => handleStandardChange(e.target.value as CourtStandard)}
                 className="w-full px-3 py-2 bg-[#111318] border border-white/15 rounded-md text-sm text-[#F2F4F7] focus:outline-none focus:border-[#1686C9]"
@@ -249,8 +281,32 @@ export const ProjectSettingsView: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs text-[#9AA4B2] mb-1.5">Environment</label>
+              <label htmlFor="settings-ground-system" className="block text-xs text-[#9AA4B2] mb-1.5">
+                Ground Build-Up System
+              </label>
               <select
+                id="settings-ground-system"
+                value={activeGroundSystem}
+                onChange={(e) => {
+                  setGroundSystem(project.id, e.target.value as GroundSystemType);
+                  handleSaveNotify();
+                }}
+                className="w-full px-3 py-2 bg-[#111318] border border-white/15 rounded-md text-sm text-[#F2F4F7] focus:outline-none focus:border-[#1686C9]"
+              >
+                {GROUND_SYSTEM_PRESETS.map((gs) => (
+                  <option key={gs.id} value={gs.id}>
+                    {gs.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="settings-environment" className="block text-xs text-[#9AA4B2] mb-1.5">
+                Environment
+              </label>
+              <select
+                id="settings-environment"
                 value={project.environment}
                 onChange={(e) => {
                   updateProject(project.id, {
@@ -266,8 +322,11 @@ export const ProjectSettingsView: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs text-[#9AA4B2] mb-1.5">Measurement Units</label>
+              <label htmlFor="settings-unit" className="block text-xs text-[#9AA4B2] mb-1.5">
+                Measurement Units
+              </label>
               <select
+                id="settings-unit"
                 value={project.unit}
                 onChange={(e) => {
                   updateProject(project.id, { unit: e.target.value as MeasurementUnit }, false);
@@ -283,10 +342,11 @@ export const ProjectSettingsView: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-white/10">
             <div>
-              <label className="block text-xs text-[#9AA4B2] mb-1.5">
+              <label htmlFor="settings-length" className="block text-xs text-[#9AA4B2] mb-1.5">
                 Length ({project.unit})
               </label>
               <input
+                id="settings-length"
                 type="number"
                 step="0.1"
                 value={metersToUnitValue(project.dimensions.lengthM, project.unit)}
@@ -297,7 +357,7 @@ export const ProjectSettingsView: React.FC = () => {
                       standard: 'CUSTOM',
                       dimensions: {
                         ...project.dimensions,
-                        lengthM: Math.max(8, Math.min(42, unitValueToMeters(val, project.unit))),
+                        lengthM: Math.max(8, Math.min(135, unitValueToMeters(val, project.unit))),
                       },
                     });
                     handleSaveNotify();
@@ -307,10 +367,11 @@ export const ProjectSettingsView: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-xs text-[#9AA4B2] mb-1.5">
+              <label htmlFor="settings-width" className="block text-xs text-[#9AA4B2] mb-1.5">
                 Width ({project.unit})
               </label>
               <input
+                id="settings-width"
                 type="number"
                 step="0.1"
                 value={metersToUnitValue(project.dimensions.widthM, project.unit)}
@@ -321,7 +382,7 @@ export const ProjectSettingsView: React.FC = () => {
                       standard: 'CUSTOM',
                       dimensions: {
                         ...project.dimensions,
-                        widthM: Math.max(6, Math.min(25, unitValueToMeters(val, project.unit))),
+                        widthM: Math.max(6, Math.min(95, unitValueToMeters(val, project.unit))),
                       },
                     });
                     handleSaveNotify();
@@ -331,10 +392,11 @@ export const ProjectSettingsView: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-xs text-[#9AA4B2] mb-1.5">
+              <label htmlFor="settings-apron" className="block text-xs text-[#9AA4B2] mb-1.5">
                 Perimeter Apron ({project.unit})
               </label>
               <input
+                id="settings-apron"
                 type="number"
                 step="0.1"
                 value={metersToUnitValue(project.dimensions.apronM, project.unit)}
@@ -344,7 +406,7 @@ export const ProjectSettingsView: React.FC = () => {
                     updateProject(project.id, {
                       dimensions: {
                         ...project.dimensions,
-                        apronM: Math.max(0.5, Math.min(6, unitValueToMeters(val, project.unit))),
+                        apronM: Math.max(0.5, Math.min(12, unitValueToMeters(val, project.unit))),
                       },
                     });
                     handleSaveNotify();
@@ -353,6 +415,22 @@ export const ProjectSettingsView: React.FC = () => {
                 className="w-full px-3 py-2 bg-[#111318] border border-white/15 rounded-md font-mono-tech text-sm text-[#F2F4F7] focus:outline-none focus:border-[#F07827]"
               />
             </div>
+          </div>
+
+          <div className="pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-[#9AA4B2]">
+              Active Sport Marking Layers ({activeLayers.length}):{' '}
+              <span className="text-[#F2F4F7]">
+                {activeLayers.map((l) => `${l.name} (${l.lengthM}×${l.widthM} m)`).join(' · ')}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => openProjectInWorkspace(project.id)}
+              className="text-xs font-medium text-[#1686C9] hover:text-[#3ba3e3] cursor-pointer"
+            >
+              Configure Marking Layers in 3D Studio
+            </button>
           </div>
         </section>
 
