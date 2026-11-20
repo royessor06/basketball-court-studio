@@ -75,7 +75,7 @@ function drawDocumentHeader(
   doc.setTextColor(242, 244, 247);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.text('BASKETBALL COURT STUDIO | ENGINEERING', 14, 10.5);
+  doc.text('SPORTS GROUND STUDIO | ENGINEERING', 14, 10.5);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);

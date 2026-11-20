@@ -38,7 +38,7 @@ export const TopNav: React.FC = () => {
           onClick={() => handleNavigate('landing')}
           className="font-display text-base sm:text-lg font-bold tracking-tight text-[#F2F4F7] hover:text-[#F07827] transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
-          Basketball Court Studio
+          Sports Ground Studio
         </button>
 
         {/* Zone 2: Concise single-line nav links */}

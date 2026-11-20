@@ -172,7 +172,7 @@ export const DashboardView: React.FC = () => {
               Project Workspace Hub
             </p>
             <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-[#F2F4F7]">
-              Court Architecture Dashboard
+              Sports Ground Architecture Dashboard
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2.5">

@@ -151,10 +151,10 @@ export const LandingPage: React.FC = () => {
                   className="font-display font-bold tracking-tight text-[#F2F4F7] leading-[1.08] mb-5"
                   style={{ fontSize: 'clamp(2.25rem, 3.8vw, 3.5rem)', textWrap: 'balance' }}
                 >
-                  Design and engineer basketball courts &amp; sports grounds in 3D.
+                  Design and engineer sports grounds &amp; courts in precision 3D.
                 </h1>
                 <p className="text-base text-[#9AA4B2] leading-relaxed max-w-xl mb-8">
-                  Basketball Court Studio equips architects, municipal planners, and facility builders
+                  Sports Ground Studio equips architects, municipal planners, and facility builders
                   with an interactive 3D CAD workspace for basketball, football, handball, volleyball,
                   tennis, and multi-sport plateaus—linked directly to plans, BOM, and FCFA costing.
                 </p>
@@ -165,7 +165,7 @@ export const LandingPage: React.FC = () => {
                     onClick={() => setCurrentView('create')}
                     className="px-6 py-3 bg-[#F07827] text-[#111318] text-sm font-semibold rounded-md hover:bg-[#ff8a3d] transition-colors inline-flex items-center gap-2 whitespace-nowrap cursor-pointer"
                   >
-                    Create New Court
+                    Create New Facility
                     <ArrowRight className="w-4 h-4" />
                   </button>
                   <button
@@ -374,7 +374,7 @@ export const LandingPage: React.FC = () => {
       {/* Quiet Footer */}
       <footer className="border-t border-white/10 bg-[#111318]">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-8 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-[#9AA4B2]">
-          <div className="font-display font-semibold text-[#F2F4F7]">Basketball Court Studio</div>
+          <div className="font-display font-semibold text-[#F2F4F7]">Sports Ground Studio</div>
           <div className="flex flex-wrap items-center gap-6">
             <button
               type="button"
@@ -402,7 +402,7 @@ export const LandingPage: React.FC = () => {
               3D Design Workspace
             </button>
           </div>
-          <div>Architectural Court Planning Platform</div>
+          <div>Architectural Sports Ground Planning Platform</div>
         </div>
       </footer>
     </div>
