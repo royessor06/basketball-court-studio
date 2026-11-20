@@ -3,16 +3,34 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
-import { AlertTriangle, X } from 'lucide-react';
+import React, { Suspense, lazy } from 'react';
+import { AlertTriangle, Loader2, X } from 'lucide-react';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { ToastViewport } from './components/common/ToastViewport';
+import { AuthWorkspaceProvider } from './store/useAuthWorkspaceStore';
 import { ProjectProvider, useProjectStore } from './store/useProjectStore';
-import { CreateProjectView } from './views/CreateProjectView';
-import { DashboardView } from './views/DashboardView';
-import { EngineeringView } from './views/EngineeringView';
-import { LandingPage } from './views/LandingPage';
-import { ProjectSettingsView } from './views/ProjectSettingsView';
-import { WorkspaceView } from './views/WorkspaceView';
+
+const LandingPage = lazy(() =>
+  import('./views/LandingPage').then((m) => ({ default: m.LandingPage }))
+);
+const DashboardView = lazy(() =>
+  import('./views/DashboardView').then((m) => ({ default: m.DashboardView }))
+);
+const CreateProjectView = lazy(() =>
+  import('./views/CreateProjectView').then((m) => ({ default: m.CreateProjectView }))
+);
+const WorkspaceView = lazy(() =>
+  import('./views/WorkspaceView').then((m) => ({ default: m.WorkspaceView }))
+);
+const EngineeringView = lazy(() =>
+  import('./views/EngineeringView').then((m) => ({ default: m.EngineeringView }))
+);
+const ProjectSettingsView = lazy(() =>
+  import('./views/ProjectSettingsView').then((m) => ({ default: m.ProjectSettingsView }))
+);
+const ContainerProjectView = lazy(() =>
+  import('./views/ContainerProjectView').then((m) => ({ default: m.ContainerProjectView }))
+);
 
 const StorageWarningBar: React.FC = () => {
   const { storageWarning, clearStorageWarning } = useProjectStore();
@@ -39,6 +57,15 @@ const StorageWarningBar: React.FC = () => {
   );
 };
 
+const ViewLoadingFallback: React.FC = () => (
+  <div className="min-h-screen flex flex-col items-center justify-center bg-[#111318] text-[#F2F4F7] gap-3">
+    <Loader2 className="w-7 h-7 text-[#F07827] animate-spin" />
+    <span className="text-xs font-mono-tech text-[#9AA4B2] tracking-wide">
+      Loading studio module...
+    </span>
+  </div>
+);
+
 const AppRouter: React.FC = () => {
   const { currentView } = useProjectStore();
 
@@ -54,6 +81,8 @@ const AppRouter: React.FC = () => {
         return <EngineeringView />;
       case 'settings':
         return <ProjectSettingsView />;
+      case 'container':
+        return <ContainerProjectView />;
       case 'landing':
       default:
         return <LandingPage />;
@@ -63,15 +92,18 @@ const AppRouter: React.FC = () => {
   return (
     <ErrorBoundary fallbackTitle="Application View Error">
       <StorageWarningBar />
-      {renderView()}
+      <Suspense fallback={<ViewLoadingFallback />}>{renderView()}</Suspense>
+      <ToastViewport />
     </ErrorBoundary>
   );
 };
 
 export default function App() {
   return (
-    <ProjectProvider>
-      <AppRouter />
-    </ProjectProvider>
+    <AuthWorkspaceProvider>
+      <ProjectProvider>
+        <AppRouter />
+      </ProjectProvider>
+    </AuthWorkspaceProvider>
   );
 }

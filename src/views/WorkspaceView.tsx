@@ -1,33 +1,20 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  ArrowLeft,
-  Check,
   ChevronRight,
-  Compass,
   Copy,
   Eye,
   EyeOff,
   FileText,
-  Grid3x3,
-  History,
-  Layers,
-  Maximize2,
-  Minimize2,
   MousePointer,
   Move,
   Plus,
-  Redo2,
-  RotateCcw,
   RotateCw,
   Ruler,
   Settings,
-  SlidersHorizontal,
   Sun,
   Moon,
   Sunset,
   Trash2,
-  Undo2,
-  X,
 } from 'lucide-react';
 import {
   buildSportLayersForFacility,
@@ -40,6 +27,7 @@ import {
   unitValueToMeters,
 } from '../constants/courtStandards';
 import { ErrorBoundary } from '../components/common/ErrorBoundary';
+import { StudioShell } from '../core/StudioShell';
 import { resolveEffectiveSportLayers } from '../sports/markingPrimitives';
 import { useProjectStore } from '../store/useProjectStore';
 import { CourtViewport } from '../three/CourtScene';
@@ -88,6 +76,8 @@ export const WorkspaceView: React.FC = () => {
     canRedo,
     hasUnsavedChanges,
     canRestoreSaved,
+    cloudSyncStatus,
+    isActiveProjectCloudBacked,
   } = useProjectStore();
 
   const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
@@ -105,12 +95,6 @@ export const WorkspaceView: React.FC = () => {
   const [showDimensions, setShowDimensions] = useState(true);
   const [savedNotice, setSavedNotice] = useState(false);
   const [restoredNotice, setRestoredNotice] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-
-  const [mobileLeftOpen, setMobileLeftOpen] = useState(false);
-  const [mobileRightOpen, setMobileRightOpen] = useState(false);
-
-  const viewportContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (activeProject?.cameraSettings) {
@@ -151,33 +135,6 @@ export const WorkspaceView: React.FC = () => {
     setPresetVersion((v) => v + 1);
   }, []);
 
-  const handleToggleFullscreen = useCallback(async () => {
-    const el = viewportContainerRef.current;
-    if (!el) return;
-    try {
-      if (!document.fullscreenElement) {
-        if (el.requestFullscreen) {
-          await el.requestFullscreen();
-          setIsFullscreen(true);
-          return;
-        }
-      } else {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
-        return;
-      }
-    } catch {
-      // Fallback to viewport-expanded fullscreen if iframe restricts browser Fullscreen API
-    }
-    setIsFullscreen((prev) => !prev);
-  }, []);
-
-  useEffect(() => {
-    const onFsChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
-    document.addEventListener('fullscreenchange', onFsChange);
-    return () => document.removeEventListener('fullscreenchange', onFsChange);
-  }, []);
-
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
@@ -190,11 +147,6 @@ export const WorkspaceView: React.FC = () => {
       }
 
       if (e.key === 'Escape') {
-        if (mobileLeftOpen || mobileRightOpen) {
-          setMobileLeftOpen(false);
-          setMobileRightOpen(false);
-          return;
-        }
         if (selectedObjectId) {
           setSelectedObjectId(null);
           return;
@@ -239,8 +191,6 @@ export const WorkspaceView: React.FC = () => {
   }, [
     activeProject,
     selectedObjectId,
-    mobileLeftOpen,
-    mobileRightOpen,
     saveProjectSnapshot,
     undo,
     redo,
@@ -318,10 +268,6 @@ export const WorkspaceView: React.FC = () => {
 
   const handleSelectFromOutliner = (id: string) => {
     handleSelectObject(id);
-    if (window.innerWidth < 1024) {
-      setMobileLeftOpen(false);
-      setMobileRightOpen(true);
-    }
   };
 
   const playingAreaSqM = project.dimensions.lengthM * project.dimensions.widthM;
@@ -1619,182 +1565,39 @@ export const WorkspaceView: React.FC = () => {
     </div>
   );
 
+  const viewportHint =
+    toolMode === 'measure'
+      ? 'Click two points on the ground or surface to measure 3D distance'
+      : toolMode === 'move' && selectedObject && !selectedObject.locked
+      ? 'Drag XYZ gizmo to move object'
+      : toolMode === 'rotate' && selectedObject && !selectedObject.locked
+      ? 'Drag rotation ring to rotate object'
+      : 'Orbit: Left-drag · Pan: Right-drag · Zoom: Scroll';
+
   return (
-    <div className="h-dvh w-full flex flex-col bg-[#111318] text-[#F2F4F7] overflow-hidden">
-      {/* Top Toolbar */}
-      <header className="h-13 shrink-0 bg-[#1A2029] border-b border-white/10 px-3 sm:px-4 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <button
-            type="button"
-            onClick={() => setCurrentView('dashboard')}
-            className="p-2 min-w-[38px] min-h-[38px] flex items-center justify-center rounded bg-[#202630] hover:bg-white/10 text-[#9AA4B2] hover:text-[#F2F4F7] transition-colors cursor-pointer shrink-0"
-            title="Back to Dashboard"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-
-          <div className="min-w-0 flex items-center gap-2">
-            <span className="font-display text-sm font-semibold text-[#F2F4F7] truncate max-w-[120px] sm:max-w-[200px]">
-              {project.name}
-            </span>
-            {hasUnsavedChanges && (
-              <span className="hidden md:inline text-[11px] font-mono-tech text-[#F07827]">
-                Unsaved
-              </span>
-            )}
-            <select
-              aria-label="Project Status"
-              value={project.status}
-              onChange={(e) => updateProjectStatus(project.id, e.target.value as ProjectStatus)}
-              className="hidden xl:block px-2 py-0.5 bg-[#202630] border border-white/10 rounded text-[11px] text-[#9AA4B2] focus:outline-none"
-            >
-              <option value="Draft">Draft</option>
-              <option value="In Review">In Review</option>
-              <option value="Specification Ready">Specification Ready</option>
-              <option value="Archived">Archived</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Center Camera Presets & Projection */}
-        <div className="hidden lg:flex items-center gap-1.5">
-          <div className="flex items-center gap-0.5 bg-[#111318] p-1 rounded-md border border-white/10">
-            {(
-              [
-                { id: 'perspective', label: 'Perspective' },
-                { id: 'top', label: 'Top' },
-                { id: 'front', label: 'Front' },
-                { id: 'side', label: 'Side' },
-              ] as Array<{ id: CameraPreset; label: string }>
-            ).map((cam) => (
-              <button
-                key={cam.id}
-                type="button"
-                onClick={() => handleSelectCamera(cam.id)}
-                className={`px-2 py-1 text-xs rounded transition-colors whitespace-nowrap cursor-pointer ${
-                  cameraPreset === cam.id
-                    ? 'bg-[#202630] text-[#F07827] font-semibold'
-                    : 'text-[#9AA4B2] hover:text-[#F2F4F7]'
-                }`}
-              >
-                {cam.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex items-center gap-0.5 bg-[#111318] p-1 rounded-md border border-white/10">
-            {(
-              [
-                { id: 'perspective', label: 'Persp' },
-                { id: 'orthographic', label: 'Ortho' },
-              ] as Array<{ id: CameraProjection; label: string }>
-            ).map((proj) => (
-              <button
-                key={proj.id}
-                type="button"
-                onClick={() => handleToggleProjection(proj.id)}
-                className={`px-2 py-1 text-xs rounded transition-colors whitespace-nowrap cursor-pointer ${
-                  projection === proj.id
-                    ? 'bg-[#1686C9] text-white font-medium'
-                    : 'text-[#9AA4B2] hover:text-[#F2F4F7]'
-                }`}
-              >
-                {proj.label}
-              </button>
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={handleResetCamera}
-            title="Reset Camera (R)"
-            className="p-2 rounded bg-[#202630] hover:bg-white/10 text-[#9AA4B2] hover:text-[#F2F4F7] transition-colors cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Right Toolbar Actions */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          <div className="hidden sm:flex items-center gap-1">
-            <button
-              type="button"
-              disabled={!canUndo}
-              onClick={undo}
-              title="Undo (Ctrl+Z)"
-              className="p-2 rounded bg-[#202630] text-[#9AA4B2] hover:text-[#F2F4F7] disabled:opacity-35 cursor-pointer"
-            >
-              <Undo2 className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              disabled={!canRedo}
-              onClick={redo}
-              title="Redo (Ctrl+Shift+Z)"
-              className="p-2 rounded bg-[#202630] text-[#9AA4B2] hover:text-[#F2F4F7] disabled:opacity-35 cursor-pointer"
-            >
-              <Redo2 className="w-4 h-4" />
-            </button>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowGrid((g) => !g)}
-            title="Toggle Grid"
-            className={`p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded border transition-colors cursor-pointer ${
-              showGrid
-                ? 'bg-[#202630] border-[#1686C9]/60 text-[#1686C9]'
-                : 'bg-[#202630] border-transparent text-[#9AA4B2]'
-            }`}
-          >
-            <Grid3x3 className="w-4 h-4" />
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setShowDimensions((d) => !d)}
-            title="Toggle Dimensions"
-            className={`p-2 min-w-[36px] min-h-[36px] flex items-center justify-center rounded border transition-colors cursor-pointer ${
-              showDimensions
-                ? 'bg-[#202630] border-[#F07827]/60 text-[#F07827]'
-                : 'bg-[#202630] border-transparent text-[#9AA4B2]'
-            }`}
-          >
-            <Ruler className="w-4 h-4" />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleToggleFullscreen}
-            title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen Viewport'}
-            className="hidden sm:flex p-2 min-w-[36px] min-h-[36px] items-center justify-center rounded bg-[#202630] hover:bg-white/10 text-[#9AA4B2] hover:text-[#F2F4F7] transition-colors cursor-pointer"
-          >
-            {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-          </button>
-
-          {canRestoreSaved && (
-            <button
-              type="button"
-              onClick={handleRestore}
-              title="Restore last saved project state"
-              className="hidden md:inline-flex items-center gap-1 px-2.5 py-1.5 min-h-[36px] bg-[#202630] hover:bg-white/10 text-xs text-[#9AA4B2] hover:text-[#F2F4F7] rounded transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <History className="w-3.5 h-3.5" />
-              <span>{restoredNotice ? 'Restored' : 'Restore'}</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={handleSave}
-            title="Save project checkpoint (Ctrl+S)"
-            aria-label="Save project checkpoint"
-            className="px-3 py-1.5 min-h-[36px] bg-[#F07827] hover:bg-[#ff8a3d] text-[#111318] text-xs font-semibold rounded transition-colors inline-flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
-          >
-            {savedNotice ? <Check className="w-3.5 h-3.5" /> : null}
-            <span>{savedNotice ? 'Saved' : 'Save'}</span>
-          </button>
-
+    <StudioShell
+      title={project.name}
+      moduleTag="Sports Ground Studio"
+      onBack={() => setCurrentView('dashboard')}
+      backLabel="Back to Dashboard"
+      cloudBacked={isActiveProjectCloudBacked}
+      cloudSyncStatus={cloudSyncStatus}
+      hasUnsavedChanges={hasUnsavedChanges}
+      headerBadgeSlot={
+        <select
+          aria-label="Project Status"
+          value={project.status}
+          onChange={(e) => updateProjectStatus(project.id, e.target.value as ProjectStatus)}
+          className="hidden xl:block px-2 py-0.5 bg-[#202630] border border-white/10 rounded text-[11px] text-[#9AA4B2] focus:outline-none"
+        >
+          <option value="Draft">Draft</option>
+          <option value="In Review">In Review</option>
+          <option value="Specification Ready">Specification Ready</option>
+          <option value="Archived">Archived</option>
+        </select>
+      }
+      headerRightActions={
+        <>
           <button
             type="button"
             onClick={() => openProjectEngineering(project.id)}
@@ -1814,213 +1617,65 @@ export const WorkspaceView: React.FC = () => {
           >
             <Settings className="w-4 h-4" />
           </button>
-        </div>
-      </header>
-
-      {/* Main 3-Pane Workspace */}
-      <div className="flex-1 flex min-h-0 relative overflow-hidden">
-        {!isFullscreen && (
-          <aside className="hidden lg:block w-[256px] shrink-0 border-r border-white/10 h-full overflow-hidden">
-            {LeftSidebarContent}
-          </aside>
-        )}
-
-        <main
-          ref={viewportContainerRef}
-          className={`flex-1 relative min-w-0 h-full bg-[#111318] ${
-            isFullscreen ? 'fixed inset-0 z-50' : ''
-          }`}
+        </>
+      }
+      cameraPreset={cameraPreset}
+      projection={projection}
+      onSelectCamera={handleSelectCamera}
+      onToggleProjection={handleToggleProjection}
+      onResetCamera={handleResetCamera}
+      canUndo={canUndo}
+      canRedo={canRedo}
+      onUndo={undo}
+      onRedo={redo}
+      showGrid={showGrid}
+      onToggleGrid={() => setShowGrid((g) => !g)}
+      showDimensions={showDimensions}
+      onToggleDimensions={() => setShowDimensions((d) => !d)}
+      canRestoreSaved={canRestoreSaved}
+      restoredNotice={restoredNotice}
+      onRestore={handleRestore}
+      savedNotice={savedNotice}
+      onSave={handleSave}
+      leftSidebarTitle="Tools & Equipment"
+      leftSidebar={LeftSidebarContent}
+      rightSidebarTitle="Inspector"
+      rightSidebar={RightSidebarContent}
+      viewport={
+        <ErrorBoundary
+          fallbackTitle="3D Viewport Interrupted"
+          fallbackDescription="WebGL rendering hit a temporary issue. Your court configuration is preserved."
         >
-          <ErrorBoundary
-            fallbackTitle="3D Viewport Interrupted"
-            fallbackDescription="WebGL rendering hit a temporary issue. Your court configuration is preserved."
-          >
-            <CourtViewport
-              project={project}
-              selectedObjectId={selectedObjectId}
-              onSelectObject={handleSelectObject}
-              toolMode={toolMode}
-              onTransformCommit={handleTransformCommit}
-              onCameraSettled={handleCameraSettled}
-              showGrid={showGrid}
-              showDimensions={showDimensions}
-              cameraPreset={cameraPreset}
-              projection={projection}
-              presetVersion={presetVersion}
-              cameraSyncKey={cameraSyncKey}
-            />
-          </ErrorBoundary>
-
-          {isFullscreen && (
-            <div className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-[#1A2029]/95 border border-white/15 rounded-md p-1.5">
-              {(['perspective', 'top', 'front', 'side'] as CameraPreset[]).map((cam) => (
-                <button
-                  key={cam}
-                  type="button"
-                  onClick={() => handleSelectCamera(cam)}
-                  className={`px-2.5 py-1 text-xs capitalize rounded cursor-pointer ${
-                    cameraPreset === cam
-                      ? 'bg-[#F07827] text-[#111318] font-semibold'
-                      : 'text-[#9AA4B2] hover:text-[#F2F4F7]'
-                  }`}
-                >
-                  {cam}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() =>
-                  handleToggleProjection(
-                    projection === 'perspective' ? 'orthographic' : 'perspective'
-                  )
-                }
-                className="px-2.5 py-1 text-xs rounded bg-[#1686C9] text-white cursor-pointer"
-              >
-                {projection === 'perspective' ? 'Persp' : 'Ortho'}
-              </button>
-              <button
-                type="button"
-                onClick={handleToggleFullscreen}
-                className="px-2.5 py-1 text-xs rounded bg-[#202630] text-[#F2F4F7] inline-flex items-center gap-1 cursor-pointer"
-              >
-                <Minimize2 className="w-3.5 h-3.5" />
-                Exit
-              </button>
-            </div>
-          )}
-
-          {/* Subtle navigation & gizmo hint */}
-          <div className="hidden lg:flex pointer-events-none absolute bottom-3 left-3 px-2.5 py-1 bg-[#111318]/85 border border-white/10 rounded text-[11px] text-[#9AA4B2] items-center gap-2">
-            <span>
-              {toolMode === 'measure'
-                ? 'Click two points on the ground or surface to measure 3D distance'
-                : toolMode === 'move' && selectedObject && !selectedObject.locked
-                ? 'Drag XYZ gizmo to move object'
-                : toolMode === 'rotate' && selectedObject && !selectedObject.locked
-                ? 'Drag rotation ring to rotate object'
-                : 'Orbit: Left-drag · Pan: Right-drag · Zoom: Scroll'}
-            </span>
-          </div>
-
-          {/* Mobile quick camera & drawer toggles */}
-          <div className="lg:hidden absolute bottom-3 left-3 right-3 flex items-center justify-between gap-1.5 pointer-events-none">
-            <button
-              type="button"
-              onClick={() => {
-                setMobileRightOpen(false);
-                setMobileLeftOpen((v) => !v);
-              }}
-              aria-label="Open Tools and Scene Objects"
-              className="pointer-events-auto px-2.5 py-2.5 min-h-[44px] bg-[#1A2029]/95 border border-white/15 rounded-md text-xs font-medium text-[#F2F4F7] inline-flex items-center gap-1.5 shadow-lg"
-            >
-              <Layers className="w-4 h-4 text-[#F07827]" />
-              Tools
-            </button>
-
-            <div className="pointer-events-auto flex items-center gap-0.5 bg-[#1A2029]/95 border border-white/15 rounded-md p-1">
-              <button
-                type="button"
-                aria-label="Perspective view"
-                title="Perspective view"
-                onClick={() => handleSelectCamera('perspective')}
-                className={`px-2 py-2 text-xs rounded min-h-[36px] ${
-                  cameraPreset === 'perspective' ? 'text-[#F07827]' : 'text-[#9AA4B2]'
-                }`}
-              >
-                <Compass className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                aria-label="Top view"
-                title="Top view"
-                onClick={() => handleSelectCamera('top')}
-                className={`px-2 py-2 text-xs rounded min-h-[36px] ${
-                  cameraPreset === 'top' ? 'text-[#F07827] font-semibold' : 'text-[#9AA4B2]'
-                }`}
-              >
-                Top
-              </button>
-              <button
-                type="button"
-                aria-label="Toggle Perspective or Orthographic projection"
-                title="Toggle 3D Perspective / 2D Orthographic"
-                onClick={() =>
-                  handleToggleProjection(
-                    projection === 'perspective' ? 'orthographic' : 'perspective'
-                  )
-                }
-                className="px-2 py-2 text-xs rounded text-[#1686C9] font-medium min-h-[36px]"
-              >
-                {projection === 'perspective' ? '3D' : '2D'}
-              </button>
-              <button
-                type="button"
-                aria-label="Open Technical Plans and FCFA Cost"
-                title="Plans & Cost"
-                onClick={() => openProjectEngineering(project.id)}
-                className="px-2 py-2 text-xs rounded text-[#F2F4F7] min-h-[36px]"
-              >
-                <FileText className="w-4 h-4 text-[#F07827]" />
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setMobileLeftOpen(false);
-                setMobileRightOpen((v) => !v);
-              }}
-              aria-label="Open Properties Inspector"
-              className="pointer-events-auto px-2.5 py-2.5 min-h-[44px] bg-[#1A2029]/95 border border-white/15 rounded-md text-xs font-medium text-[#F2F4F7] inline-flex items-center gap-1.5 shadow-lg"
-            >
-              <SlidersHorizontal className="w-4 h-4 text-[#1686C9]" />
-              Inspect
-            </button>
-          </div>
-
-          {mobileLeftOpen && (
-            <div className="lg:hidden absolute inset-y-0 left-0 w-[280px] max-w-[85vw] z-30 border-r border-white/15 shadow-2xl flex flex-col bg-[#1A2029]">
-              <div className="px-3 py-2.5 border-b border-white/10 flex items-center justify-between">
-                <span className="text-xs font-semibold">Tools &amp; Equipment</span>
-                <button
-                  type="button"
-                  onClick={() => setMobileLeftOpen(false)}
-                  className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-[#9AA4B2]"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-hidden">{LeftSidebarContent}</div>
-            </div>
-          )}
-
-          {mobileRightOpen && (
-            <div className="lg:hidden absolute inset-y-0 right-0 w-[290px] max-w-[88vw] z-30 border-l border-white/15 shadow-2xl flex flex-col bg-[#1A2029]">
-              <div className="px-3 py-2.5 border-b border-white/10 flex items-center justify-between">
-                <span className="text-xs font-semibold">Inspector</span>
-                <button
-                  type="button"
-                  onClick={() => setMobileRightOpen(false)}
-                  className="p-2 min-w-[40px] min-h-[40px] flex items-center justify-center text-[#9AA4B2]"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-hidden">{RightSidebarContent}</div>
-            </div>
-          )}
-        </main>
-
-        {!isFullscreen && (
-          <aside className="hidden lg:block w-[300px] shrink-0 border-l border-white/10 h-full overflow-hidden">
-            {RightSidebarContent}
-          </aside>
-        )}
-      </div>
-
-      {/* Bottom Status Bar */}
-      <footer className="h-8 shrink-0 bg-[#1A2029] border-t border-white/10 px-3 sm:px-4 flex items-center justify-between gap-4 text-[11px] text-[#9AA4B2]">
-        <div className="flex items-center gap-3 sm:gap-5 overflow-hidden">
+          <CourtViewport
+            project={project}
+            selectedObjectId={selectedObjectId}
+            onSelectObject={handleSelectObject}
+            toolMode={toolMode}
+            onTransformCommit={handleTransformCommit}
+            onCameraSettled={handleCameraSettled}
+            showGrid={showGrid}
+            showDimensions={showDimensions}
+            cameraPreset={cameraPreset}
+            projection={projection}
+            presetVersion={presetVersion}
+            cameraSyncKey={cameraSyncKey}
+          />
+        </ErrorBoundary>
+      }
+      viewportHint={viewportHint}
+      mobileQuickAction={
+        <button
+          type="button"
+          aria-label="Open Technical Plans and FCFA Cost"
+          title="Plans & Cost"
+          onClick={() => openProjectEngineering(project.id)}
+          className="px-2 py-2 text-xs rounded text-[#F2F4F7] min-h-[36px]"
+        >
+          <FileText className="w-4 h-4 text-[#F07827]" />
+        </button>
+      }
+      footerLeft={
+        <>
           <span className="font-mono-tech whitespace-nowrap text-[#F2F4F7]">
             Playing: {formatLength(project.dimensions.lengthM, project.unit)} ×{' '}
             {formatLength(project.dimensions.widthM, project.unit)} ({formatArea(playingAreaSqM, project.unit)})
@@ -2033,9 +1688,10 @@ export const WorkspaceView: React.FC = () => {
             {project.environmentSettings.lightingMode} · {project.environmentSettings.renderMode} ·{' '}
             {spec.shortLabel}
           </span>
-        </div>
-
-        <div className="flex items-center gap-3 shrink-0">
+        </>
+      }
+      footerRight={
+        <>
           <button
             type="button"
             onClick={() =>
@@ -2054,8 +1710,8 @@ export const WorkspaceView: React.FC = () => {
           <span className="hidden sm:inline font-mono-tech capitalize">
             {projection === 'orthographic' ? 'Ortho' : 'Persp'} · {cameraPreset}
           </span>
-        </div>
-      </footer>
-    </div>
+        </>
+      }
+    />
   );
 };

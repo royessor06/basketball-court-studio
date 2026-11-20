@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowLeft, ArrowRight, Building2, Layers, Sun } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Building2, Layers, Loader2, Sun } from 'lucide-react';
 import { TopNav } from '../components/layout/TopNav';
 import {
   buildSportLayersForFacility,
@@ -55,6 +55,7 @@ export const CreateProjectView: React.FC = () => {
   const [customWidthM, setCustomWidthM] = useState(15.0);
   const [apronM, setApronM] = useState(2.0);
   const [nameError, setNameError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const activeSpec = COURT_STANDARDS[standard];
   const effectiveLengthM = dimensionMode === 'custom' ? customLengthM : activeSpec.lengthM;
@@ -146,30 +147,35 @@ export const CreateProjectView: React.FC = () => {
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setNameError('Enter a project name before initializing the 3D scene.');
       return;
     }
     setNameError('');
-    createProject({
-      name: name.trim(),
-      client: client.trim() || undefined,
-      location: location.trim() || undefined,
-      sport,
-      standard: dimensionMode === 'custom' ? 'CUSTOM' : standard,
-      groundSystem,
-      surfaceType,
-      overlaySports:
-        sport === 'multisport' || sport === 'custom' ? overlaySports : [activeSpec.layerSport],
-      environment,
-      template,
-      unit,
-      customLengthM: dimensionMode === 'custom' ? customLengthM : undefined,
-      customWidthM: dimensionMode === 'custom' ? customWidthM : undefined,
-      apronM,
-    });
+    setSubmitting(true);
+    try {
+      await createProject({
+        name: name.trim(),
+        client: client.trim() || undefined,
+        location: location.trim() || undefined,
+        sport,
+        standard: dimensionMode === 'custom' ? 'CUSTOM' : standard,
+        groundSystem,
+        surfaceType,
+        overlaySports:
+          sport === 'multisport' || sport === 'custom' ? overlaySports : [activeSpec.layerSport],
+        environment,
+        template,
+        unit,
+        customLengthM: dimensionMode === 'custom' ? customLengthM : undefined,
+        customWidthM: dimensionMode === 'custom' ? customWidthM : undefined,
+        apronM,
+      });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const areaSqM = useMemo(() => totalLengthM * totalWidthM, [totalLengthM, totalWidthM]);
@@ -657,10 +663,20 @@ export const CreateProjectView: React.FC = () => {
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 bg-[#F07827] text-[#111318] text-sm font-semibold rounded-md hover:bg-[#ff8a3d] transition-colors inline-flex items-center gap-2 cursor-pointer"
+                disabled={submitting}
+                className="px-6 py-2.5 bg-[#F07827] text-[#111318] text-sm font-semibold rounded-md hover:bg-[#ff8a3d] disabled:opacity-60 transition-colors inline-flex items-center gap-2 cursor-pointer"
               >
-                Initialize 3D Workspace
-                <ArrowRight className="w-4 h-4" />
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Initializing Workspace...
+                  </>
+                ) : (
+                  <>
+                    Initialize 3D Workspace
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </div>
           </div>

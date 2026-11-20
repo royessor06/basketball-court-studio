@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowRight, Box, Compass, Layers, Ruler } from 'lucide-react';
+import { ArrowRight, Box, CheckCircle2, Compass, Home, Layers, LogIn, Ruler, Sofa } from 'lucide-react';
 import {
   buildDefaultObjects,
   buildSportLayersForFacility,
@@ -9,6 +9,8 @@ import {
   GROUND_SYSTEM_PRESETS,
   SURFACE_PRESETS,
 } from '../constants/courtStandards';
+import { STUDIO_MODULE_LIST } from '../core/studioModules';
+import { useAuthWorkspace } from '../store/useAuthWorkspaceStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { CourtViewport } from '../three/CourtScene';
 import { CourtEnvironment, CourtProject, CourtStandard } from '../types/court';
@@ -16,6 +18,7 @@ import { TopNav } from '../components/layout/TopNav';
 
 export const LandingPage: React.FC = () => {
   const { setCurrentView, openProjectInWorkspace, activeProject } = useProjectStore();
+  const { authLoading, userProfile, signInWithGoogle } = useAuthWorkspace();
   const [previewStandard, setPreviewStandard] = useState<CourtStandard>('FIBA');
   const [previewEnv, setPreviewEnv] = useState<CourtEnvironment>('indoor');
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -145,29 +148,53 @@ export const LandingPage: React.FC = () => {
             <div className="lg:col-span-5 flex flex-col justify-between">
               <div>
                 <p className="text-xs font-mono-tech uppercase tracking-[0.14em] text-[#F07827] mb-4">
-                  Architectural 3D Sports Ground CAD
+                  My3D Studio · Unified 3D Design &amp; Engineering Platform
                 </p>
                 <h1
                   className="font-display font-bold tracking-tight text-[#F2F4F7] leading-[1.08] mb-5"
                   style={{ fontSize: 'clamp(2.25rem, 3.8vw, 3.5rem)', textWrap: 'balance' }}
                 >
-                  Design and engineer sports grounds &amp; courts in precision 3D.
+                  Design, document &amp; estimate 3D projects on one shared core.
                 </h1>
                 <p className="text-base text-[#9AA4B2] leading-relaxed max-w-xl mb-8">
-                  Sports Ground Studio equips architects, municipal planners, and facility builders
-                  with an interactive 3D CAD workspace for basketball, football, handball, volleyball,
-                  tennis, and multi-sport plateaus—linked directly to plans, BOM, and FCFA costing.
+                  My3D Studio unites <strong className="text-[#F2F4F7]">Sports Ground Studio</strong>,{' '}
+                  <strong className="text-[#F2F4F7]">Furniture Studio</strong>, and{' '}
+                  <strong className="text-[#F2F4F7]">House Studio</strong> on a shared 3D CAD viewport,
+                  cloud workspace, and FCFA costing engine. Launch the full Sports Ground CAD module
+                  right now.
                 </p>
 
-                <div className="flex flex-wrap items-center gap-4 mb-10">
+                <div className="flex flex-wrap items-center gap-3 mb-10">
                   <button
                     type="button"
                     onClick={() => setCurrentView('create')}
                     className="px-6 py-3 bg-[#F07827] text-[#111318] text-sm font-semibold rounded-md hover:bg-[#ff8a3d] transition-colors inline-flex items-center gap-2 whitespace-nowrap cursor-pointer"
                   >
-                    Create New Facility
+                    New Sports Facility
                     <ArrowRight className="w-4 h-4" />
                   </button>
+                  {!authLoading &&
+                    (userProfile ? (
+                      <button
+                        type="button"
+                        onClick={() => setCurrentView('dashboard')}
+                        className="px-5 py-3 bg-[#1686C9] hover:bg-[#1e96de] text-white text-sm font-semibold rounded-md transition-colors whitespace-nowrap cursor-pointer"
+                      >
+                        Open Workspace Hub
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await signInWithGoogle();
+                          setCurrentView('dashboard');
+                        }}
+                        className="px-5 py-3 bg-[#1686C9] hover:bg-[#1e96de] text-white text-sm font-semibold rounded-md transition-colors inline-flex items-center gap-2 whitespace-nowrap cursor-pointer"
+                      >
+                        <LogIn className="w-4 h-4" />
+                        Sign in with Google
+                      </button>
+                    ))}
                   <button
                     type="button"
                     onClick={() =>
@@ -177,7 +204,7 @@ export const LandingPage: React.FC = () => {
                     }
                     className="px-5 py-3 bg-[#1A2029] text-[#F2F4F7] border border-white/15 text-sm font-medium rounded-md hover:bg-[#202630] transition-colors whitespace-nowrap cursor-pointer"
                   >
-                    Open Project Dashboard
+                    {activeProject ? 'Open 3D Studio' : 'Open Dashboard'}
                   </button>
                 </div>
               </div>
@@ -185,15 +212,15 @@ export const LandingPage: React.FC = () => {
               {/* Grounded dimensional summary */}
               <div className="grid grid-cols-3 gap-4 pt-6 border-t border-white/10">
                 <div>
-                  <div className="font-mono-tech text-lg font-semibold text-[#F2F4F7]">6+ Sports</div>
-                  <div className="text-xs text-[#9AA4B2] mt-0.5">Basket · Foot · Volley · Tennis · Handball</div>
+                  <div className="font-mono-tech text-lg font-semibold text-[#F2F4F7]">3 Studios</div>
+                  <div className="text-xs text-[#9AA4B2] mt-0.5">Sports · Furniture · House</div>
                 </div>
                 <div>
-                  <div className="font-mono-tech text-lg font-semibold text-[#F2F4F7]">8 Ground Systems</div>
-                  <div className="text-xs text-[#9AA4B2] mt-0.5">Concrete, Turf, Clay, Sand &amp; Wood</div>
+                  <div className="font-mono-tech text-lg font-semibold text-[#F2F4F7]">Shared 3D Core</div>
+                  <div className="text-xs text-[#9AA4B2] mt-0.5">WebGL Viewport, CAD &amp; Cloud</div>
                 </div>
                 <div>
-                  <div className="font-mono-tech text-lg font-semibold text-[#F2F4F7]">Real-Time 3D</div>
+                  <div className="font-mono-tech text-lg font-semibold text-[#F2F4F7]">6+ Sports Live</div>
                   <div className="text-xs text-[#9AA4B2] mt-0.5">CAD sheets, BOM &amp; FCFA costing</div>
                 </div>
               </div>
@@ -256,6 +283,91 @@ export const LandingPage: React.FC = () => {
                   Drag to orbit · Scroll to zoom · Click assemblies to inspect
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        {/* Three Specialized Studio Modules Section */}
+        <section className="border-t border-white/10 bg-[#131720]">
+          <div className="max-w-[1440px] mx-auto px-4 sm:px-8 py-14">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+              <div>
+                <p className="text-xs font-mono-tech uppercase tracking-[0.14em] text-[#F07827] mb-2">
+                  Modular Platform Architecture
+                </p>
+                <h2 className="font-display text-2xl sm:text-3xl font-bold tracking-tight text-[#F2F4F7]">
+                  Three Specialized 3D Studios on One Core
+                </h2>
+              </div>
+              <p className="text-sm text-[#9AA4B2] max-w-md">
+                Powered by a shared WebGL viewport, CAD workspace shell, and multi-tenant Firestore project core.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {STUDIO_MODULE_LIST.map((mod) => {
+                const ModIcon =
+                  mod.id === 'sports' ? Compass : mod.id === 'furniture' ? Sofa : Home;
+                return (
+                  <div
+                    key={mod.id}
+                    className="p-6 bg-[#1A2029] border border-white/10 rounded-lg flex flex-col justify-between gap-5"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="w-10 h-10 rounded-md bg-[#202630] border border-white/10 flex items-center justify-center">
+                          <ModIcon
+                            className={`w-5 h-5 ${
+                              mod.id === 'sports'
+                                ? 'text-[#F07827]'
+                                : mod.id === 'furniture'
+                                ? 'text-[#4CC38A]'
+                                : 'text-[#1686C9]'
+                            }`}
+                          />
+                        </div>
+                        <span
+                          className={`text-[11px] font-mono-tech uppercase tracking-wider ${
+                            mod.editorReady ? 'text-[#4CC38A]' : 'text-[#9AA4B2]'
+                          }`}
+                        >
+                          {mod.editorReady ? 'Live 3D Editor' : 'Cloud Container Ready'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className="font-display text-lg font-semibold text-[#F2F4F7]">
+                          {mod.name}
+                        </h3>
+                        <p className="text-xs text-[#9AA4B2] mt-1 leading-relaxed">
+                          {mod.description}
+                        </p>
+                      </div>
+
+                      <ul className="space-y-1.5 pt-2 border-t border-white/10 text-xs text-[#9AA4B2]">
+                        {mod.capabilities.map((item) => (
+                          <li key={item} className="flex items-center gap-2">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-[#1686C9] shrink-0" />
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setCurrentView(mod.editorReady ? 'create' : 'dashboard')}
+                      className={`w-full px-4 py-2.5 text-xs font-semibold rounded-md transition-colors cursor-pointer ${
+                        mod.editorReady
+                          ? 'bg-[#F07827] hover:bg-[#ff8a3d] text-[#111318]'
+                          : 'bg-[#202630] hover:bg-white/10 text-[#F2F4F7] border border-white/10'
+                      }`}
+                    >
+                      {mod.editorReady ? 'Launch Sports Ground Studio' : 'Create Project Container'}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -374,21 +486,21 @@ export const LandingPage: React.FC = () => {
       {/* Quiet Footer */}
       <footer className="border-t border-white/10 bg-[#111318]">
         <div className="max-w-[1440px] mx-auto px-4 sm:px-8 py-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-xs text-[#9AA4B2]">
-          <div className="font-display font-semibold text-[#F2F4F7]">Sports Ground Studio</div>
+          <div className="font-display font-semibold text-[#F2F4F7]">My3D Studio</div>
           <div className="flex flex-wrap items-center gap-6">
             <button
               type="button"
               onClick={() => setCurrentView('dashboard')}
               className="hover:text-[#F2F4F7] transition-colors cursor-pointer"
             >
-              Projects Dashboard
+              Workspaces Hub
             </button>
             <button
               type="button"
               onClick={() => setCurrentView('create')}
               className="hover:text-[#F2F4F7] transition-colors cursor-pointer"
             >
-              Project Configurator
+              Sports Configurator
             </button>
             <button
               type="button"
@@ -402,7 +514,7 @@ export const LandingPage: React.FC = () => {
               3D Design Workspace
             </button>
           </div>
-          <div>Architectural Sports Ground Planning Platform</div>
+          <div>Unified 3D Design, CAD &amp; FCFA Costing Platform</div>
         </div>
       </footer>
     </div>

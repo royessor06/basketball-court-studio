@@ -33,6 +33,12 @@ import {
   SurfaceMaterialType,
 } from '../types/court';
 import {
+  loadSportsProjectSpec,
+  saveSportsProjectSpec,
+} from '../firebase/workspaceService';
+import { WorkspaceProject } from '../types/workspace';
+import { useAuthWorkspace } from './useAuthWorkspaceStore';
+import {
   loadPersistedActiveProjectId,
   localProjectStorage,
   persistActiveProjectId,
@@ -56,6 +62,8 @@ export interface CreateProjectInput {
   apronM?: number;
 }
 
+export type CloudSyncStatus = 'idle' | 'saving' | 'saved' | 'error';
+
 interface HistoryEntry {
   projects: CourtProject[];
 }
@@ -72,10 +80,21 @@ interface ProjectContextValue {
   storageWarning: string | null;
   clearStorageWarning: () => void;
   setCurrentView: (view: AppView) => void;
+  activeContainerProject: WorkspaceProject | null;
+  cloudSyncing: boolean;
+  cloudSyncStatus: CloudSyncStatus;
+  lastCloudSavedAt: string | null;
+  isActiveProjectCloudBacked: boolean;
   openProjectInWorkspace: (id: string) => void;
   openProjectEngineering: (id: string) => void;
   openProjectSettings: (id: string) => void;
-  createProject: (input: CreateProjectInput) => CourtProject;
+  openSportsWorkspaceProject: (
+    wsProject: WorkspaceProject,
+    targetView?: 'workspace' | 'engineering' | 'settings'
+  ) => Promise<void>;
+  openContainerProject: (wsProject: WorkspaceProject) => void;
+  seedSampleSportsProjects: () => Promise<void>;
+  createProject: (input: CreateProjectInput) => Promise<CourtProject>;
   importProject: (rawJson: string) => { ok: boolean; project?: CourtProject; error?: string };
   restoreSampleProjects: () => void;
   updateProject: (id: string, patch: Partial<CourtProject>, recordHistory?: boolean) => void;
@@ -91,8 +110,8 @@ interface ProjectContextValue {
   updateSportLayer: (projectId: string, layerId: string, patch: Partial<SportMarkingLayer>) => void;
   removeSportLayer: (projectId: string, layerId: string) => void;
   setGroundSystem: (projectId: string, groundSystem: GroundSystemType) => void;
-  duplicateProject: (id: string) => CourtProject | null;
-  deleteProject: (id: string) => void;
+  duplicateProject: (id: string) => Promise<CourtProject | null>;
+  deleteProject: (id: string) => Promise<void>;
   resetProjectCourt: (id: string) => void;
   saveProjectSnapshot: (id: string) => boolean;
   restoreSavedSnapshot: (id: string) => boolean;
@@ -116,12 +135,26 @@ function cloneProject(proj: CourtProject): CourtProject {
 }
 
 export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const {
+    userProfile,
+    activeWorkspace,
+    workspaceProjects,
+    createContainerProject,
+    removeProject,
+    pushToast,
+  } = useAuthWorkspace();
+
   const [initialBoot] = useState(() => loadInitialProjectsState());
   const [projects, setProjects] = useState<CourtProject[]>(initialBoot.projects);
   const projectsRef = useRef<CourtProject[]>(projects);
   projectsRef.current = projects;
 
   const [storageWarning, setStorageWarning] = useState<string | null>(initialBoot.error ?? null);
+  const [activeContainerProjectId, setActiveContainerProjectId] = useState<string | null>(null);
+  const [cloudSyncing, setCloudSyncing] = useState(false);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>('idle');
+  const [lastCloudSavedAt, setLastCloudSavedAt] = useState<string | null>(null);
+  const hydratedCloudIdsRef = useRef<Set<string>>(new Set());
 
   const [savedSnapshots, setSavedSnapshots] = useState<Record<string, CourtProject>>(() => {
     const snaps = localProjectStorage.loadSavedSnapshots();
@@ -148,7 +181,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const [currentView, setCurrentViewState] = useState<AppView>(() => {
     const hash = window.location.hash.replace('#', '') as AppView;
-    const valid: AppView[] = ['landing', 'dashboard', 'create', 'workspace', 'engineering', 'settings'];
+    const valid: AppView[] = [
+      'landing',
+      'dashboard',
+      'create',
+      'workspace',
+      'engineering',
+      'settings',
+      'container',
+    ];
     return valid.includes(hash) ? hash : 'landing';
   });
 
@@ -168,7 +209,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '') as AppView;
-      const valid: AppView[] = ['landing', 'dashboard', 'create', 'workspace', 'engineering', 'settings'];
+      const valid: AppView[] = [
+        'landing',
+        'dashboard',
+        'create',
+        'workspace',
+        'engineering',
+        'settings',
+        'container',
+      ];
       if (valid.includes(hash)) {
         setCurrentViewState(hash);
       }
@@ -258,8 +307,150 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     [setActiveProjectId, setCurrentView]
   );
 
+  const openContainerProject = useCallback(
+    (wsProject: WorkspaceProject) => {
+      setActiveContainerProjectId(wsProject.projectId);
+      setCurrentView('container');
+    },
+    [setCurrentView]
+  );
+
+  const openSportsWorkspaceProject = useCallback(
+    async (
+      wsProject: WorkspaceProject,
+      targetView: 'workspace' | 'engineering' | 'settings' = 'workspace'
+    ) => {
+      setCloudSyncing(true);
+      try {
+        let loaded = await loadSportsProjectSpec(wsProject);
+        if (!loaded) {
+          const spec = COURT_STANDARDS.FIBA;
+          const preset = SURFACE_PRESETS[0];
+          const dims = {
+            lengthM: spec.lengthM,
+            widthM: spec.widthM,
+            apronM: spec.defaultApronM,
+            isHalfCourt: false,
+            orientationDeg: 0,
+            showSafetyZone: true,
+          };
+          const mats: CourtMaterials = {
+            surfaceType: preset.id,
+            surfaceColor: preset.defaultSurfaceColor,
+            apronColor: preset.defaultApronColor,
+            paintColor: preset.defaultPaintColor,
+            lineColor: '#F2F4F7',
+          };
+          const layers = buildSportLayersForFacility('FIBA', dims.lengthM, dims.widthM, mats);
+          loaded = normalizeProject({
+            id: wsProject.projectId,
+            schemaVersion: 2,
+            name: wsProject.name,
+            client: activeWorkspace?.label ?? 'Workspace Client',
+            location: 'Site Unassigned',
+            notes: `${wsProject.name} — initialized from workspace container.`,
+            sport: 'basketball',
+            standard: 'FIBA',
+            groundSystem: 'concrete_slab',
+            environment: 'indoor',
+            template: 'standard',
+            status: wsProject.status === 'archived' ? 'Archived' : 'Draft',
+            unit: 'm',
+            dimensions: dims,
+            materials: mats,
+            sportLayers: layers,
+            environmentSettings: defaultEnvironmentSettings('indoor'),
+            cameraSettings: defaultCameraSettings(dims.lengthM, dims.widthM),
+            engineeringAssumptions: defaultEngineeringAssumptions('indoor', 'concrete_slab'),
+            costConfig: defaultCostConfig(),
+            objects: buildDefaultObjects(dims, 'indoor', 'standard', mats, 'FIBA', layers),
+            createdAt: wsProject.createdAt,
+            updatedAt: wsProject.updatedAt,
+            lastOpenedAt: new Date().toISOString(),
+          });
+          await saveSportsProjectSpec(loaded, false);
+        } else {
+          loaded = { ...loaded, name: wsProject.name };
+        }
+
+        setProjects((prev) => {
+          const exists = prev.some((p) => p.id === loaded!.id);
+          return exists ? prev.map((p) => (p.id === loaded!.id ? loaded! : p)) : [loaded!, ...prev];
+        });
+        hydratedCloudIdsRef.current.add(loaded.id);
+        const snap = cloneProject(loaded);
+        localProjectStorage.saveSnapshot(snap);
+        setSavedSnapshots((s) => ({ ...s, [loaded!.id]: snap }));
+        setDirtyProjectIds((d) => ({ ...d, [loaded!.id]: false }));
+        setCloudSyncStatus('saved');
+        setLastCloudSavedAt(loaded.updatedAt);
+        setActiveProjectId(loaded.id);
+        setPast([]);
+        setFuture([]);
+        setCurrentView(targetView);
+      } catch (err) {
+        setCloudSyncStatus('error');
+        pushToast({
+          type: 'error',
+          title: 'Failed to load 3D specification',
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      } finally {
+        setCloudSyncing(false);
+      }
+    },
+    [activeWorkspace, pushToast, setActiveProjectId, setCurrentView]
+  );
+
+  // Rehydrate active cloud sports project on F5 reload when landing directly on workspace/engineering/settings
+  useEffect(() => {
+    if (!userProfile || !activeProjectId) return;
+    if (!['workspace', 'engineering', 'settings'].includes(currentView)) return;
+    if (hydratedCloudIdsRef.current.has(activeProjectId)) return;
+
+    const wsProj = workspaceProjects.find(
+      (wp) => wp.projectId === activeProjectId && wp.module === 'sports'
+    );
+    if (!wsProj) return;
+
+    hydratedCloudIdsRef.current.add(wsProj.projectId);
+    void loadSportsProjectSpec(wsProj)
+      .then((loaded) => {
+        if (!loaded) return;
+        const synced = { ...loaded, name: wsProj.name };
+        setProjects((prev) => {
+          const exists = prev.some((p) => p.id === synced.id);
+          return exists ? prev.map((p) => (p.id === synced.id ? synced : p)) : [synced, ...prev];
+        });
+        const snap = cloneProject(synced);
+        localProjectStorage.saveSnapshot(snap);
+        setSavedSnapshots((s) => ({ ...s, [synced.id]: snap }));
+        setDirtyProjectIds((d) => ({ ...d, [synced.id]: false }));
+        setCloudSyncStatus('saved');
+        setLastCloudSavedAt(synced.updatedAt);
+      })
+      .catch(() => {
+        // Non-blocking fallback to local copy
+      });
+  }, [userProfile, activeProjectId, currentView, workspaceProjects]);
+
+  const seedSampleSportsProjects = useCallback(async () => {
+    if (!userProfile || !activeWorkspace) return;
+    setCloudSyncing(true);
+    try {
+      const samples = createInitialProjects().slice(0, 2);
+      for (const sample of samples) {
+        const freshId = `proj-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+        const cloned = { ...cloneProject(sample), id: freshId };
+        await createContainerProject(cloned.name, 'sports', cloned);
+      }
+    } finally {
+      setCloudSyncing(false);
+    }
+  }, [userProfile, activeWorkspace, createContainerProject]);
+
   const createProject = useCallback(
-    (input: CreateProjectInput): CourtProject => {
+    async (input: CreateProjectInput): Promise<CourtProject> => {
       const spec = COURT_STANDARDS[input.standard] ?? COURT_STANDARDS.FIBA;
       const lengthM =
         (input.standard === 'CUSTOM' || input.customLengthM) && input.customLengthM
@@ -349,10 +540,28 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setActiveProjectId(newProject.id);
       setPast([]);
       setFuture([]);
+
+      if (userProfile && activeWorkspace) {
+        setCloudSyncing(true);
+        setCloudSyncStatus('saving');
+        try {
+          const createdCloud = await createContainerProject(newProject.name, 'sports', newProject);
+          if (createdCloud) {
+            hydratedCloudIdsRef.current.add(newProject.id);
+            setCloudSyncStatus('saved');
+            setLastCloudSavedAt(new Date().toISOString());
+          } else {
+            setCloudSyncStatus('error');
+          }
+        } finally {
+          setCloudSyncing(false);
+        }
+      }
+
       setCurrentView('workspace');
       return newProject;
     },
-    [commitProjects, setActiveProjectId, setCurrentView]
+    [commitProjects, setActiveProjectId, setCurrentView, userProfile, activeWorkspace, createContainerProject]
   );
 
   const updateProject = useCallback(
@@ -362,7 +571,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         (prev) =>
           prev.map((p) => (p.id === id ? { ...p, ...patch, updatedAt: now } : p)),
         recordHistory,
-        recordHistory ? id : undefined
+        id
       );
     },
     [commitProjects]
@@ -911,7 +1120,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   );
 
   const duplicateProject = useCallback(
-    (id: string): CourtProject | null => {
+    async (id: string): Promise<CourtProject | null> => {
       const source = projectsRef.current.find((p) => p.id === id);
       if (!source) return null;
       const now = new Date().toISOString();
@@ -928,14 +1137,33 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const snap = cloneProject(copy);
       localProjectStorage.saveSnapshot(snap);
       setSavedSnapshots((s) => ({ ...s, [copy.id]: snap }));
+
+      if (userProfile && activeWorkspace && workspaceProjects.some((wp) => wp.projectId === id)) {
+        setCloudSyncing(true);
+        try {
+          await createContainerProject(copy.name, 'sports', copy);
+          hydratedCloudIdsRef.current.add(copy.id);
+        } finally {
+          setCloudSyncing(false);
+        }
+      }
       return copy;
     },
-    [commitProjects]
+    [commitProjects, userProfile, activeWorkspace, workspaceProjects, createContainerProject]
   );
 
   const deleteProject = useCallback(
-    (id: string) => {
+    async (id: string): Promise<void> => {
+      if (userProfile && workspaceProjects.some((wp) => wp.projectId === id)) {
+        setCloudSyncing(true);
+        try {
+          await removeProject(id, 'sports');
+        } finally {
+          setCloudSyncing(false);
+        }
+      }
       localProjectStorage.removeSnapshot(id);
+      hydratedCloudIdsRef.current.delete(id);
       setSavedSnapshots((prev) => {
         if (!prev[id]) return prev;
         const copy = { ...prev };
@@ -956,7 +1184,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return filtered;
       });
     },
-    [activeProjectId, setActiveProjectId]
+    [activeProjectId, setActiveProjectId, userProfile, workspaceProjects, removeProject]
   );
 
   const importProject = useCallback(
@@ -974,9 +1202,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
       setSavedSnapshots((s) => ({ ...s, [imported.id]: snap }));
       setActiveProjectId(imported.id);
+      if (userProfile && activeWorkspace) {
+        void createContainerProject(imported.name, 'sports', imported);
+      }
       return { ok: true, project: imported };
     },
-    [commitProjects, setActiveProjectId]
+    [commitProjects, setActiveProjectId, userProfile, activeWorkspace, createContainerProject]
   );
 
   const restoreSampleProjects = useCallback(() => {
@@ -1041,10 +1272,52 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setSavedSnapshots((s) => ({ ...s, [id]: stamped }));
       setProjects((prev) => prev.map((p) => (p.id === id ? stamped : p)));
       setDirtyProjectIds((d) => ({ ...d, [id]: false }));
+
+      if (userProfile && workspaceProjects.some((wp) => wp.projectId === id)) {
+        setCloudSyncing(true);
+        setCloudSyncStatus('saving');
+        void saveSportsProjectSpec(stamped, true)
+          .then(() => {
+            setCloudSyncStatus('saved');
+            setLastCloudSavedAt(new Date().toISOString());
+          })
+          .catch((err) => {
+            setCloudSyncStatus('error');
+            pushToast({
+              type: 'error',
+              title: 'Cloud sync failed',
+              detail: err instanceof Error ? err.message : String(err),
+            });
+          })
+          .finally(() => setCloudSyncing(false));
+      }
       return true;
     },
-    []
+    [userProfile, workspaceProjects, pushToast]
   );
+
+  // Debounced auto-sync for active cloud-backed sports projects
+  useEffect(() => {
+    if (!userProfile || !activeProjectId || !dirtyProjectIds[activeProjectId]) return;
+    if (!workspaceProjects.some((wp) => wp.projectId === activeProjectId)) return;
+
+    setCloudSyncStatus('saving');
+    const timer = window.setTimeout(() => {
+      const target = projectsRef.current.find((p) => p.id === activeProjectId);
+      if (!target) return;
+      void saveSportsProjectSpec(target, true)
+        .then(() => {
+          setDirtyProjectIds((d) => ({ ...d, [activeProjectId]: false }));
+          setCloudSyncStatus('saved');
+          setLastCloudSavedAt(new Date().toISOString());
+        })
+        .catch(() => {
+          setCloudSyncStatus('error');
+        });
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [userProfile, activeProjectId, dirtyProjectIds, workspaceProjects, projects]);
 
   const restoreSavedSnapshot = useCallback(
     (id: string): boolean => {
@@ -1070,15 +1343,28 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     [projects, activeProjectId]
   );
 
+  const activeContainerProject = useMemo(
+    () => workspaceProjects.find((wp) => wp.projectId === activeContainerProjectId) ?? null,
+    [workspaceProjects, activeContainerProjectId]
+  );
+
   const canUndo = past.length > 0;
   const canRedo = future.length > 0;
   const hasUnsavedChanges = Boolean(activeProject && dirtyProjectIds[activeProject.id]);
   const canRestoreSaved = Boolean(activeProject && savedSnapshots[activeProject.id]);
+  const isActiveProjectCloudBacked = Boolean(
+    userProfile && activeProject && workspaceProjects.some((wp) => wp.projectId === activeProject.id)
+  );
 
   const value: ProjectContextValue = {
     projects,
     activeProjectId,
     activeProject,
+    activeContainerProject,
+    cloudSyncing,
+    cloudSyncStatus,
+    lastCloudSavedAt,
+    isActiveProjectCloudBacked,
     currentView,
     canUndo,
     canRedo,
@@ -1090,6 +1376,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     openProjectInWorkspace,
     openProjectEngineering,
     openProjectSettings,
+    openSportsWorkspaceProject,
+    openContainerProject,
+    seedSampleSportsProjects,
     createProject,
     importProject,
     restoreSampleProjects,

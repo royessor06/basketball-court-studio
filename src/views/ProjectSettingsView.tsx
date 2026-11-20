@@ -3,8 +3,10 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  Cloud,
   Copy,
   Download,
+  Loader2,
   RotateCcw,
   Trash2,
   Upload,
@@ -38,10 +40,13 @@ export const ProjectSettingsView: React.FC = () => {
     deleteProject,
     resetProjectCourt,
     setGroundSystem,
+    cloudSyncStatus,
+    isActiveProjectCloudBacked,
   } = useProjectStore();
 
   const [savedFeedback, setSavedFeedback] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [busyAction, setBusyAction] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -137,6 +142,21 @@ export const ProjectSettingsView: React.FC = () => {
           </button>
 
           <div className="flex items-center gap-3">
+            {isActiveProjectCloudBacked && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-mono-tech text-[#9AA4B2]">
+                {cloudSyncStatus === 'saving' ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 text-[#1686C9] animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-3.5 h-3.5 text-[#4CC38A]" />
+                    Cloud Synced
+                  </>
+                )}
+              </span>
+            )}
             {savedFeedback && (
               <span className="inline-flex items-center gap-1 text-xs text-[#4CC38A]">
                 <Check className="w-3.5 h-3.5" />
@@ -479,13 +499,19 @@ export const ProjectSettingsView: React.FC = () => {
 
             <button
               type="button"
-              onClick={() => {
-                const copy = duplicateProject(project.id);
-                if (copy) openProjectInWorkspace(copy.id);
+              disabled={busyAction}
+              onClick={async () => {
+                setBusyAction(true);
+                try {
+                  const copy = await duplicateProject(project.id);
+                  if (copy) openProjectInWorkspace(copy.id);
+                } finally {
+                  setBusyAction(false);
+                }
               }}
-              className="px-4 py-2.5 bg-[#202630] hover:bg-white/10 border border-white/10 rounded-md text-xs font-medium text-[#F2F4F7] inline-flex items-center gap-2 cursor-pointer"
+              className="px-4 py-2.5 bg-[#202630] hover:bg-white/10 disabled:opacity-50 border border-white/10 rounded-md text-xs font-medium text-[#F2F4F7] inline-flex items-center gap-2 cursor-pointer"
             >
-              <Copy className="w-4 h-4 text-[#9AA4B2]" />
+              {busyAction ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4 text-[#9AA4B2]" />}
               Duplicate Project
             </button>
 
@@ -506,12 +532,18 @@ export const ProjectSettingsView: React.FC = () => {
                 <span className="text-xs text-red-400">Delete permanently?</span>
                 <button
                   type="button"
-                  onClick={() => {
-                    deleteProject(project.id);
-                    setConfirmDelete(false);
-                    setCurrentView('dashboard');
+                  disabled={busyAction}
+                  onClick={async () => {
+                    setBusyAction(true);
+                    try {
+                      await deleteProject(project.id);
+                      setConfirmDelete(false);
+                      setCurrentView('dashboard');
+                    } finally {
+                      setBusyAction(false);
+                    }
                   }}
-                  className="px-3 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold rounded-md cursor-pointer"
+                  className="px-3 py-2 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs font-semibold rounded-md cursor-pointer"
                 >
                   Confirm Delete
                 </button>

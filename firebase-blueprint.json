@@ -1,0 +1,439 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user profile synchronized from Firebase Google Sign-In.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "photoURL": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "locale": {
+          "type": "string",
+          "maxLength": 20
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["uid", "email", "displayName", "locale", "createdAt", "updatedAt"]
+    },
+    "Organization": {
+      "title": "Organization",
+      "description": "Multi-user organization workspace owning shared projects and team memberships.",
+      "type": "object",
+      "properties": {
+        "orgId": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["orgId", "name", "ownerId", "createdAt", "updatedAt"]
+    },
+    "Membership": {
+      "title": "Membership",
+      "description": "Deterministic org membership record (${orgId}_${userId}) encoding RBAC role.",
+      "type": "object",
+      "properties": {
+        "membershipId": {
+          "type": "string",
+          "maxLength": 260,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "orgId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "userId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["owner", "admin", "manager", "collaborator"]
+        },
+        "userEmail": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "userDisplayName": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "sourceInvitationId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["membershipId", "orgId", "userId", "role", "userEmail", "userDisplayName", "createdAt", "updatedAt"]
+    },
+    "Invitation": {
+      "title": "Invitation",
+      "description": "Email invitation to join an organization with a specified RBAC role.",
+      "type": "object",
+      "properties": {
+        "invitationId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "orgId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "orgName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 100
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 254
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin", "manager", "collaborator"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "accepted", "revoked"]
+        },
+        "invitedBy": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["invitationId", "orgId", "orgName", "email", "role", "status", "invitedBy", "createdAt", "updatedAt"]
+    },
+    "WorkspaceProject": {
+      "title": "WorkspaceProject",
+      "description": "Multi-module project container scoped to either a personal user workspace or an organization.",
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "ownerType": {
+          "type": "string",
+          "enum": ["user", "org"]
+        },
+        "ownerId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 140
+        },
+        "module": {
+          "type": "string",
+          "enum": ["sports", "house", "furniture"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "archived"]
+        },
+        "summaryText": {
+          "type": "string",
+          "maxLength": 240
+        },
+        "createdBy": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["projectId", "ownerType", "ownerId", "name", "module", "status", "createdBy", "createdAt", "updatedAt"]
+    },
+    "SportsProjectSpec": {
+      "title": "SportsProjectSpec",
+      "description": "3D CAD, sport marking layers, surface materials, equipment assemblies, and engineering assumptions for a Sports Ground Studio project.",
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "module": {
+          "type": "string",
+          "enum": ["sports"]
+        },
+        "schemaVersion": {
+          "type": "number"
+        },
+        "client": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "location": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "sport": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "standard": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "groundSystem": {
+          "type": "string",
+          "maxLength": 40
+        },
+        "environment": {
+          "type": "string",
+          "enum": ["indoor", "outdoor"]
+        },
+        "template": {
+          "type": "string",
+          "enum": ["standard", "blank"]
+        },
+        "courtStatus": {
+          "type": "string",
+          "enum": ["Draft", "In Review", "Specification Ready", "Archived"]
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["m", "ft"]
+        },
+        "dimensions": {
+          "type": "object"
+        },
+        "materials": {
+          "type": "object"
+        },
+        "sportLayers": {
+          "type": "array"
+        },
+        "environmentSettings": {
+          "type": "object"
+        },
+        "cameraSettings": {
+          "type": "object"
+        },
+        "engineeringAssumptions": {
+          "type": "object"
+        },
+        "costConfig": {
+          "type": "object"
+        },
+        "objects": {
+          "type": "array"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["projectId", "standard", "environment", "template", "unit", "dimensions", "materials", "objects", "updatedAt"]
+    },
+    "FurnitureProjectSpec": {
+      "title": "FurnitureProjectSpec",
+      "description": "Parametric 3D furniture assemblies, sheet materials, cut-lists, and FCFA workshop costing for a Furniture Studio project.",
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "module": {
+          "type": "string",
+          "enum": ["furniture"]
+        },
+        "schemaVersion": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["m", "cm", "mm"]
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "roomDimensions": {
+          "type": "object"
+        },
+        "materials": {
+          "type": "object"
+        },
+        "items": {
+          "type": "array"
+        },
+        "cameraSettings": {
+          "type": "object"
+        },
+        "costConfig": {
+          "type": "object"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["projectId", "module", "unit", "roomDimensions", "materials", "items", "updatedAt"]
+    },
+    "HouseProjectSpec": {
+      "title": "HouseProjectSpec",
+      "description": "Parametric residential footprint, rooms, structural shell, openings, roofing, and FCFA BOQ for a House Studio project.",
+      "type": "object",
+      "properties": {
+        "projectId": {
+          "type": "string",
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "module": {
+          "type": "string",
+          "enum": ["house"]
+        },
+        "schemaVersion": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string",
+          "enum": ["m", "ft"]
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "parcel": {
+          "type": "object"
+        },
+        "structure": {
+          "type": "object"
+        },
+        "materials": {
+          "type": "object"
+        },
+        "rooms": {
+          "type": "array"
+        },
+        "openings": {
+          "type": "array"
+        },
+        "cameraSettings": {
+          "type": "object"
+        },
+        "costConfig": {
+          "type": "object"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["projectId", "module", "unit", "parcel", "structure", "materials", "rooms", "openings", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user profile keyed by Firebase Auth UID."
+    },
+    "/organizations/{orgId}": {
+      "schema": { "$ref": "#/entities/Organization" },
+      "description": "Organization workspaces."
+    },
+    "/memberships/{membershipId}": {
+      "schema": { "$ref": "#/entities/Membership" },
+      "description": "Deterministic membership records keyed as ${orgId}_${userId}."
+    },
+    "/invitations/{invitationId}": {
+      "schema": { "$ref": "#/entities/Invitation" },
+      "description": "Organization email invitations."
+    },
+    "/projects/{projectId}": {
+      "schema": { "$ref": "#/entities/WorkspaceProject" },
+      "description": "Top-level workspace projects (sports, house, furniture)."
+    },
+    "/projects/{projectId}/specs/{specId}": {
+      "schema": { "$ref": "#/entities/SportsProjectSpec" },
+      "description": "Module-scoped 3D specification payload under parent project (SportsProjectSpec, FurnitureProjectSpec, or HouseProjectSpec matched to parent module)."
+    }
+  }
+}

@@ -1,0 +1,394 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 0: Default-deny global catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Helpers
+    // -------------------------------------------------------------------------
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function authEmailLower() {
+      return request.auth.token.email is string ? request.auth.token.email.lower() : '';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidMembershipId(id) {
+      return id is string && id.size() >= 3 && id.size() <= 260 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function membershipPath(orgId, uid) {
+      return /databases/$(database)/documents/memberships/$(orgId + '_' + uid);
+    }
+
+    function isOrgMember(orgId) {
+      return isValidId(orgId) && exists(membershipPath(orgId, request.auth.uid));
+    }
+
+    function orgRole(orgId) {
+      return get(membershipPath(orgId, request.auth.uid)).data.role;
+    }
+
+    function isOrgAdminOrOwner(orgId) {
+      return isOrgMember(orgId) && orgRole(orgId) in ['owner', 'admin'];
+    }
+
+    function isOrgManagerPlus(orgId) {
+      return isOrgMember(orgId) && orgRole(orgId) in ['owner', 'admin', 'manager'];
+    }
+
+    function canReadProjectData(proj) {
+      return (proj.ownerType == 'user' && proj.ownerId == request.auth.uid) ||
+             (proj.ownerType == 'org' && isOrgMember(proj.ownerId));
+    }
+
+    function canDeleteProjectData(proj) {
+      return (proj.ownerType == 'user' && proj.ownerId == request.auth.uid) ||
+             (proj.ownerType == 'org' &&
+              (isOrgManagerPlus(proj.ownerId) ||
+               (isOrgMember(proj.ownerId) && proj.createdBy == request.auth.uid)));
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validation Blueprints (no resource/diff calls inside)
+    // -------------------------------------------------------------------------
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'displayName', 'locale', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'locale', 'createdAt', 'updatedAt']) &&
+             isValidId(data.uid) &&
+             data.uid == request.auth.uid &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 120 &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+             data.locale is string && data.locale.size() >= 2 && data.locale.size() <= 20 &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidOrganization(data) {
+      return data.keys().hasAll(['orgId', 'name', 'ownerId', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['orgId', 'name', 'ownerId', 'createdAt', 'updatedAt']) &&
+             isValidId(data.orgId) && data.orgId.size() >= 3 &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 100 &&
+             isValidId(data.ownerId) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidMembership(data) {
+      return data.keys().hasAll(['membershipId', 'orgId', 'userId', 'role', 'userEmail', 'userDisplayName', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['membershipId', 'orgId', 'userId', 'role', 'userEmail', 'userDisplayName', 'sourceInvitationId', 'createdAt', 'updatedAt']) &&
+             isValidMembershipId(data.membershipId) &&
+             isValidId(data.orgId) &&
+             isValidId(data.userId) &&
+             data.role in ['owner', 'admin', 'manager', 'collaborator'] &&
+             data.userEmail is string && data.userEmail.size() >= 3 && data.userEmail.size() <= 254 &&
+             data.userDisplayName is string && data.userDisplayName.size() >= 1 && data.userDisplayName.size() <= 120 &&
+             (!('sourceInvitationId' in data) || isValidId(data.sourceInvitationId)) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidInvitation(data) {
+      return data.keys().hasAll(['invitationId', 'orgId', 'orgName', 'email', 'role', 'status', 'invitedBy', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['invitationId', 'orgId', 'orgName', 'email', 'role', 'status', 'invitedBy', 'createdAt', 'updatedAt']) &&
+             isValidId(data.invitationId) &&
+             isValidId(data.orgId) &&
+             data.orgName is string && data.orgName.size() >= 2 && data.orgName.size() <= 100 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 254 &&
+             data.email == data.email.lower() &&
+             data.role in ['admin', 'manager', 'collaborator'] &&
+             data.status in ['pending', 'accepted', 'revoked'] &&
+             isValidId(data.invitedBy) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidProject(data) {
+      return data.keys().hasAll(['projectId', 'ownerType', 'ownerId', 'name', 'module', 'status', 'createdBy', 'createdAt', 'updatedAt']) &&
+             data.keys().hasOnly(['projectId', 'ownerType', 'ownerId', 'name', 'module', 'status', 'summaryText', 'createdBy', 'createdAt', 'updatedAt']) &&
+             isValidId(data.projectId) &&
+             data.ownerType in ['user', 'org'] &&
+             isValidId(data.ownerId) &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 140 &&
+             data.module in ['sports', 'house', 'furniture'] &&
+             data.status in ['active', 'archived'] &&
+             (!('summaryText' in data) || (data.summaryText is string && data.summaryText.size() <= 240)) &&
+             isValidId(data.createdBy) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidSportsSpec(data, projectId) {
+      return (!('module' in data) || data.module == 'sports') &&
+             data.keys().hasAll(['projectId', 'standard', 'environment', 'template', 'unit', 'dimensions', 'materials', 'objects', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'projectId', 'module', 'schemaVersion', 'client', 'location', 'notes', 'sport',
+               'standard', 'groundSystem', 'environment', 'template', 'courtStatus',
+               'unit', 'dimensions', 'materials', 'sportLayers', 'environmentSettings',
+               'cameraSettings', 'engineeringAssumptions', 'costConfig', 'objects', 'updatedAt'
+             ]) &&
+             isValidId(data.projectId) &&
+             data.projectId == projectId &&
+             data.standard is string && data.standard.size() >= 2 && data.standard.size() <= 40 &&
+             data.environment in ['indoor', 'outdoor'] &&
+             data.template in ['standard', 'blank'] &&
+             data.unit in ['m', 'ft'] &&
+             data.dimensions is map &&
+             data.materials is map &&
+             data.objects is list && data.objects.size() <= 250 &&
+             (!('sportLayers' in data) || (data.sportLayers is list && data.sportLayers.size() <= 20)) &&
+             (!('client' in data) || (data.client is string && data.client.size() <= 120)) &&
+             (!('location' in data) || (data.location is string && data.location.size() <= 120)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 2000)) &&
+             (!('sport' in data) || (data.sport is string && data.sport.size() <= 40)) &&
+             (!('groundSystem' in data) || (data.groundSystem is string && data.groundSystem.size() <= 40)) &&
+             (!('courtStatus' in data) || data.courtStatus in ['Draft', 'In Review', 'Specification Ready', 'Archived']) &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidFurnitureSpec(data, projectId) {
+      return ('module' in data) && data.module == 'furniture' &&
+             data.keys().hasAll(['projectId', 'module', 'unit', 'roomDimensions', 'materials', 'items', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'projectId', 'module', 'schemaVersion', 'unit', 'notes',
+               'roomDimensions', 'materials', 'items', 'cameraSettings', 'costConfig', 'updatedAt'
+             ]) &&
+             isValidId(data.projectId) &&
+             data.projectId == projectId &&
+             data.unit in ['m', 'cm', 'mm'] &&
+             data.roomDimensions is map &&
+             data.materials is map &&
+             data.items is list && data.items.size() <= 150 &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 2000)) &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidHouseSpec(data, projectId) {
+      return ('module' in data) && data.module == 'house' &&
+             data.keys().hasAll(['projectId', 'module', 'unit', 'parcel', 'structure', 'materials', 'rooms', 'openings', 'updatedAt']) &&
+             data.keys().hasOnly([
+               'projectId', 'module', 'schemaVersion', 'unit', 'notes',
+               'parcel', 'structure', 'materials', 'rooms', 'openings', 'cameraSettings', 'costConfig', 'updatedAt'
+             ]) &&
+             isValidId(data.projectId) &&
+             data.projectId == projectId &&
+             data.unit in ['m', 'ft'] &&
+             data.parcel is map &&
+             data.structure is map &&
+             data.materials is map &&
+             data.rooms is list && data.rooms.size() <= 80 &&
+             data.openings is list && data.openings.size() <= 160 &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 2000)) &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidProjectSpec(data, projectId) {
+      return isValidSportsSpec(data, projectId) ||
+             isValidFurnitureSpec(data, projectId) ||
+             isValidHouseSpec(data, projectId);
+    }
+
+    // -------------------------------------------------------------------------
+    // /users/{uid} — Strict PII Isolation
+    // -------------------------------------------------------------------------
+    match /users/{uid} {
+      allow get: if isVerifiedUser() && isValidId(uid) && uid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(uid) && uid == request.auth.uid &&
+                       isValidUser(incoming()) &&
+                       incoming().createdAt == request.time &&
+                       incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(uid) && uid == request.auth.uid &&
+                       isValidUser(incoming()) &&
+                       incoming().uid == existing().uid &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt == request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['email', 'displayName', 'photoURL', 'locale', 'updatedAt']);
+    }
+
+    // -------------------------------------------------------------------------
+    // /organizations/{orgId}
+    // -------------------------------------------------------------------------
+    match /organizations/{orgId} {
+      allow get: if isVerifiedUser() && isValidId(orgId) && isOrgMember(orgId);
+      allow create: if isVerifiedUser() && isValidId(orgId) &&
+                       isValidOrganization(incoming()) &&
+                       incoming().orgId == orgId &&
+                       incoming().ownerId == request.auth.uid &&
+                       incoming().createdAt == request.time &&
+                       incoming().updatedAt == request.time &&
+                       existsAfter(membershipPath(orgId, request.auth.uid));
+      allow update: if isVerifiedUser() && isValidId(orgId) &&
+                       isValidOrganization(incoming()) &&
+                       isOrgAdminOrOwner(orgId) &&
+                       incoming().orgId == existing().orgId &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt == request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(orgId) && existing().ownerId == request.auth.uid;
+    }
+
+    // -------------------------------------------------------------------------
+    // /memberships/{membershipId} — Deterministic ${orgId}_${userId}
+    // -------------------------------------------------------------------------
+    match /memberships/{membershipId} {
+      allow get: if isVerifiedUser() && isValidMembershipId(membershipId) &&
+                    (existing().userId == request.auth.uid || isOrgMember(existing().orgId));
+      allow list: if isVerifiedUser() &&
+                     (existing().userId == request.auth.uid || isOrgMember(existing().orgId));
+      allow create: if isVerifiedUser() && isValidMembershipId(membershipId) &&
+                       isValidMembership(incoming()) &&
+                       incoming().membershipId == membershipId &&
+                       membershipId == (incoming().orgId + '_' + incoming().userId) &&
+                       incoming().createdAt == request.time &&
+                       incoming().updatedAt == request.time &&
+                       (
+                         // Case 1: Org founder bootstrap in atomic batch with org creation
+                         (incoming().userId == request.auth.uid &&
+                          incoming().role == 'owner' &&
+                          !('sourceInvitationId' in incoming()) &&
+                          getAfter(/databases/$(database)/documents/organizations/$(incoming().orgId)).data.ownerId == request.auth.uid) ||
+                         // Case 2: Org owner/admin adds member directly
+                         (isOrgAdminOrOwner(incoming().orgId) &&
+                          incoming().role in ['admin', 'manager', 'collaborator'] &&
+                          exists(/databases/$(database)/documents/organizations/$(incoming().orgId))) ||
+                         // Case 3: Invited user accepts matching pending invitation atomically
+                         (incoming().userId == request.auth.uid &&
+                          incoming().role in ['admin', 'manager', 'collaborator'] &&
+                          ('sourceInvitationId' in incoming()) &&
+                          isValidId(incoming().sourceInvitationId) &&
+                          exists(/databases/$(database)/documents/organizations/$(incoming().orgId)) &&
+                          get(/databases/$(database)/documents/invitations/$(incoming().sourceInvitationId)).data.orgId == incoming().orgId &&
+                          get(/databases/$(database)/documents/invitations/$(incoming().sourceInvitationId)).data.email == authEmailLower() &&
+                          get(/databases/$(database)/documents/invitations/$(incoming().sourceInvitationId)).data.status == 'pending' &&
+                          get(/databases/$(database)/documents/invitations/$(incoming().sourceInvitationId)).data.role == incoming().role &&
+                          getAfter(/databases/$(database)/documents/invitations/$(incoming().sourceInvitationId)).data.status == 'accepted')
+                       );
+      allow update: if isVerifiedUser() && isValidMembershipId(membershipId) &&
+                       isValidMembership(incoming()) &&
+                       isOrgAdminOrOwner(existing().orgId) &&
+                       existing().role != 'owner' &&
+                       incoming().role in ['admin', 'manager', 'collaborator'] &&
+                       incoming().membershipId == existing().membershipId &&
+                       incoming().orgId == existing().orgId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt == request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['role', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidMembershipId(membershipId) &&
+                       existing().role != 'owner' &&
+                       (isOrgAdminOrOwner(existing().orgId) || existing().userId == request.auth.uid);
+    }
+
+    // -------------------------------------------------------------------------
+    // /invitations/{invitationId}
+    // -------------------------------------------------------------------------
+    match /invitations/{invitationId} {
+      allow get: if isVerifiedUser() && isValidId(invitationId) &&
+                    (existing().email == authEmailLower() || isOrgAdminOrOwner(existing().orgId));
+      allow list: if isVerifiedUser() &&
+                     (existing().email == authEmailLower() || isOrgAdminOrOwner(existing().orgId));
+      allow create: if isVerifiedUser() && isValidId(invitationId) &&
+                       isValidInvitation(incoming()) &&
+                       incoming().invitationId == invitationId &&
+                       incoming().invitedBy == request.auth.uid &&
+                       incoming().status == 'pending' &&
+                       incoming().createdAt == request.time &&
+                       incoming().updatedAt == request.time &&
+                       exists(/databases/$(database)/documents/organizations/$(incoming().orgId)) &&
+                       isOrgAdminOrOwner(incoming().orgId);
+      allow update: if isVerifiedUser() && isValidId(invitationId) &&
+                       isValidInvitation(incoming()) &&
+                       incoming().invitationId == existing().invitationId &&
+                       incoming().orgId == existing().orgId &&
+                       incoming().orgName == existing().orgName &&
+                       incoming().email == existing().email &&
+                       incoming().role == existing().role &&
+                       incoming().invitedBy == existing().invitedBy &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt == request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+                       existing().status == 'pending' &&
+                       (
+                         (incoming().status == 'accepted' &&
+                          existing().email == authEmailLower() &&
+                          existsAfter(membershipPath(existing().orgId, request.auth.uid))) ||
+                         (incoming().status == 'revoked' && isOrgAdminOrOwner(existing().orgId))
+                       );
+      allow delete: if isVerifiedUser() && isValidId(invitationId) && isOrgAdminOrOwner(existing().orgId);
+    }
+
+    // -------------------------------------------------------------------------
+    // /projects/{projectId}
+    // -------------------------------------------------------------------------
+    match /projects/{projectId} {
+      allow get: if isVerifiedUser() && isValidId(projectId) && canReadProjectData(existing());
+      allow list: if isVerifiedUser() && canReadProjectData(existing());
+      allow create: if isVerifiedUser() && isValidId(projectId) &&
+                       isValidProject(incoming()) &&
+                       incoming().projectId == projectId &&
+                       incoming().createdBy == request.auth.uid &&
+                       incoming().createdAt == request.time &&
+                       incoming().updatedAt == request.time &&
+                       (
+                         (incoming().ownerType == 'user' && incoming().ownerId == request.auth.uid) ||
+                         (incoming().ownerType == 'org' &&
+                          exists(/databases/$(database)/documents/organizations/$(incoming().ownerId)) &&
+                          isOrgMember(incoming().ownerId))
+                       );
+      allow update: if isVerifiedUser() && isValidId(projectId) &&
+                       isValidProject(incoming()) &&
+                       canReadProjectData(existing()) &&
+                       incoming().projectId == existing().projectId &&
+                       incoming().ownerType == existing().ownerType &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().module == existing().module &&
+                       incoming().createdBy == existing().createdBy &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt == request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['name', 'status', 'summaryText', 'updatedAt']);
+      allow delete: if isVerifiedUser() && isValidId(projectId) && canDeleteProjectData(existing());
+
+      // Multi-module 3D Studio specification payload (Master Gate via parent project + module lock)
+      match /specs/{specId} {
+        allow get, list: if isVerifiedUser() && isValidId(projectId) &&
+                              exists(/databases/$(database)/documents/projects/$(projectId)) &&
+                              canReadProjectData(get(/databases/$(database)/documents/projects/$(projectId)).data);
+        allow create, update: if isVerifiedUser() && isValidId(projectId) && isValidId(specId) &&
+                                 isValidProjectSpec(incoming(), projectId) &&
+                                 incoming().updatedAt == request.time &&
+                                 exists(/databases/$(database)/documents/projects/$(projectId)) &&
+                                 canReadProjectData(get(/databases/$(database)/documents/projects/$(projectId)).data) &&
+                                 (
+                                   (!('module' in incoming()) && get(/databases/$(database)/documents/projects/$(projectId)).data.module == 'sports') ||
+                                   (('module' in incoming()) && incoming().module == get(/databases/$(database)/documents/projects/$(projectId)).data.module)
+                                 );
+        allow delete: if isVerifiedUser() && isValidId(projectId) &&
+                         exists(/databases/$(database)/documents/projects/$(projectId)) &&
+                         canDeleteProjectData(get(/databases/$(database)/documents/projects/$(projectId)).data);
+      }
+    }
+  }
+}

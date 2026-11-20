@@ -7,10 +7,12 @@ import {
   CalendarClock,
   CheckCircle2,
   ClipboardList,
+  Cloud,
   Compass,
   Download,
   FileText,
   Layers,
+  Loader2,
   RotateCcw,
 } from 'lucide-react';
 import { TopNav } from '../components/layout/TopNav';
@@ -43,19 +45,24 @@ import {
   exportCostEstimatePdf,
   exportTechnicalPlansPdf,
 } from '../engineering/pdfExport';
+import { useAuthWorkspace } from '../store/useAuthWorkspaceStore';
 import { useProjectStore } from '../store/useProjectStore';
 
 type EngineeringTab = 'plans' | 'bom' | 'cost' | 'schedule';
 
 export const EngineeringView: React.FC = () => {
+  const { userProfile, workspaceProjects } = useAuthWorkspace();
   const {
     projects,
     activeProject,
     setCurrentView,
     openProjectInWorkspace,
     openProjectEngineering,
+    openSportsWorkspaceProject,
     updateEngineeringAssumptions,
     updateCostConfig,
+    cloudSyncStatus,
+    isActiveProjectCloudBacked,
   } = useProjectStore();
 
   const [activeTab, setActiveTab] = useState<EngineeringTab>('plans');
@@ -170,6 +177,21 @@ export const EngineeringView: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">
+            {isActiveProjectCloudBacked && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-mono-tech text-[#9AA4B2] mr-1">
+                {cloudSyncStatus === 'saving' ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 text-[#1686C9] animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-3.5 h-3.5 text-[#4CC38A]" />
+                    Cloud
+                  </>
+                )}
+              </span>
+            )}
             {exportNotice && (
               <span className="inline-flex items-center gap-1.5 text-xs text-[#4CC38A] font-medium mr-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
@@ -177,18 +199,38 @@ export const EngineeringView: React.FC = () => {
               </span>
             )}
 
-            <select
-              aria-label="Select project for engineering report"
-              value={project.id}
-              onChange={(e) => openProjectEngineering(e.target.value)}
-              className="px-3 py-2 bg-[#1A2029] border border-white/15 rounded-md text-xs text-[#F2F4F7] focus:outline-none focus:border-[#1686C9] max-w-[220px]"
-            >
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
+            {userProfile && workspaceProjects.some((wp) => wp.module === 'sports') ? (
+              <select
+                aria-label="Select workspace project for engineering report"
+                value={project.id}
+                onChange={(e) => {
+                  const chosen = workspaceProjects.find((wp) => wp.projectId === e.target.value);
+                  if (chosen) void openSportsWorkspaceProject(chosen, 'engineering');
+                }}
+                className="px-3 py-2 bg-[#1A2029] border border-white/15 rounded-md text-xs text-[#F2F4F7] focus:outline-none focus:border-[#1686C9] max-w-[220px]"
+              >
+                {workspaceProjects
+                  .filter((wp) => wp.module === 'sports')
+                  .map((wp) => (
+                    <option key={wp.projectId} value={wp.projectId}>
+                      {wp.name}
+                    </option>
+                  ))}
+              </select>
+            ) : (
+              <select
+                aria-label="Select project for engineering report"
+                value={project.id}
+                onChange={(e) => openProjectEngineering(e.target.value)}
+                className="px-3 py-2 bg-[#1A2029] border border-white/15 rounded-md text-xs text-[#F2F4F7] focus:outline-none focus:border-[#1686C9] max-w-[220px]"
+              >
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <button
               type="button"

@@ -1,4 +1,4 @@
-export type AppView = 'landing' | 'dashboard' | 'create' | 'workspace' | 'engineering' | 'settings';
+export type AppView = 'landing' | 'dashboard' | 'create' | 'workspace' | 'engineering' | 'settings' | 'container';
 
 export type SportDiscipline =
   | 'basketball'
